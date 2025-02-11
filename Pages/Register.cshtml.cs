@@ -9,6 +9,7 @@ using _234351A_Razor.Models;
 using System.Net.Http;
 using System.Text.Json;
 using System.Web;
+using System.Collections.Generic;
 
 namespace _234351A_Razor.Pages
 {
@@ -26,7 +27,7 @@ namespace _234351A_Razor.Pages
         }
 
         [BindProperty]
-        public RegisterViewModel RModel { get; set; }
+        public RegisterViewModel RModel { get; set; } = new();
 
         public class RegisterViewModel
         {
@@ -81,12 +82,15 @@ namespace _234351A_Razor.Pages
             }
 
             // Verify Google reCAPTCHA
-            var httpClient = new HttpClient();
-            var recaptchaResponse = await httpClient.PostAsync(
-                $"https://www.google.com/recaptcha/api/siteverify?secret=6LdTW9IqAAAAACxuDiS8O9i_XIvlueaPncuQIfz2&response={RModel.RecaptchaToken}",
-                null
-            );
+            using var httpClient = new HttpClient();
+            var postData = new Dictionary<string, string>
+            {
+                { "secret", "6LdTW9IqAAAAACxuDiS8O9i_XIvlueaPncuQIfz2" },
+                { "response", RModel.RecaptchaToken }
+            };
 
+            var content = new FormUrlEncodedContent(postData);
+            var recaptchaResponse = await httpClient.PostAsync("https://www.google.com/recaptcha/api/siteverify", content);
             var jsonResponse = await recaptchaResponse.Content.ReadAsStringAsync();
             var recaptchaResult = JsonSerializer.Deserialize<RecaptchaResponse>(jsonResponse);
 

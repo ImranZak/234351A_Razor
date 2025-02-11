@@ -6,6 +6,8 @@ using System.Net.Http;
 using System.Text.Json;
 using System.Threading.Tasks;
 using _234351A_Razor.Models;
+using System.Collections.Generic;
+using Microsoft.AspNetCore.Http;
 
 namespace _234351A_Razor.Pages
 {
@@ -48,11 +50,14 @@ namespace _234351A_Razor.Pages
 
             // Verify Google reCAPTCHA
             using var httpClient = new HttpClient();
-            var recaptchaResponse = await httpClient.PostAsync(
-                $"https://www.google.com/recaptcha/api/siteverify?secret=6LdTW9IqAAAAACxuDiS8O9i_XIvlueaPncuQIfz2&response={LModel.RecaptchaToken}",
-                null
-            );
+            var postData = new Dictionary<string, string>
+            {
+                { "secret", "6LdTW9IqAAAAACxuDiS8O9i_XIvlueaPncuQIfz2" },
+                { "response", LModel.RecaptchaToken }
+            };
 
+            var content = new FormUrlEncodedContent(postData);
+            var recaptchaResponse = await httpClient.PostAsync("https://www.google.com/recaptcha/api/siteverify", content);
             var jsonResponse = await recaptchaResponse.Content.ReadAsStringAsync();
             var recaptchaResult = JsonSerializer.Deserialize<RecaptchaResponse>(jsonResponse);
 
@@ -62,6 +67,7 @@ namespace _234351A_Razor.Pages
                 return Page();
             }
 
+            // Check if user exists
             var user = await _userManager.FindByEmailAsync(LModel.Email);
             if (user == null)
             {
@@ -69,11 +75,24 @@ namespace _234351A_Razor.Pages
                 return Page();
             }
 
+            // Attempt login
             var result = await _signInManager.PasswordSignInAsync(user, LModel.Password, LModel.RememberMe, lockoutOnFailure: true);
             if (result.Succeeded)
             {
-                HttpContext.Session.Clear(); // Clear previous session to prevent session fixation
-                HttpContext.Session.SetString("UserId", user.Id); // Store user session
+                // Clear previous session to prevent session fixation attacks
+                HttpContext.Session.Clear();
+
+                // Generate a new session authentication token
+                string authToken = System.Guid.NewGuid().ToString();
+                HttpContext.Session.SetString("UserId", user.Id);
+                HttpContext.Session.SetString("AuthToken", authToken);
+
+                Response.Cookies.Append("AuthToken", authToken, new CookieOptions
+                {
+                    HttpOnly = true,
+                    Secure = true,
+                    SameSite = SameSiteMode.Strict
+                });
 
                 return LocalRedirect(Url.Content("~/"));
             }

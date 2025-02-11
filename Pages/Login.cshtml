@@ -14,13 +14,13 @@
 
                 <div class="mb-3">
                     <label class="form-label" asp-for="LModel.Email">Email Address</label>
-                    <input type="email" asp-for="LModel.Email" class="form-control" />
+                    <input type="email" asp-for="LModel.Email" class="form-control" required />
                     <span asp-validation-for="LModel.Email" class="text-danger"></span>
                 </div>
 
                 <div class="mb-3">
                     <label class="form-label" asp-for="LModel.Password">Password</label>
-                    <input type="password" asp-for="LModel.Password" class="form-control" />
+                    <input type="password" asp-for="LModel.Password" class="form-control" required />
                     <span asp-validation-for="LModel.Password" class="text-danger"></span>
                 </div>
 
@@ -30,7 +30,7 @@
                 </div>
 
                 <!-- Google reCAPTCHA -->
-                <input type="hidden" id="g-recaptcha-response" name="g-recaptcha-response" />
+                <input type="hidden" id="RecaptchaToken" name="RecaptchaToken" />
 
                 <div class="mb-3">
                     <button type="submit" class="btn btn-primary">Login</button>
@@ -41,11 +41,11 @@
 </div>
 
 @section Scripts {
-    <script src="https://www.google.com/recaptcha/api.js?render=6LdTW9IqAAAAAGV45FeA0E4gnuw_OAGwg9lYINVT"></script>
+    <script src="https://www.google.com/recaptcha/api.js?render='6LdTW9IqAAAAAGV45FeA0E4gnuw_OAGwg9lYINVT'"></script>
     <script>
         grecaptcha.ready(function () {
             grecaptcha.execute('6LdTW9IqAAAAAGV45FeA0E4gnuw_OAGwg9lYINVT', { action: 'login' }).then(function (token) {
-                document.getElementById('g-recaptcha-response').value = token;
+                document.getElementById('RecaptchaToken').value = token;
             });
         });
     </script>

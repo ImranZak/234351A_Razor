@@ -12,7 +12,7 @@ using _234351A_Razor.Data;
 namespace _234351A_Razor.Migrations
 {
     [DbContext(typeof(AuthDbContext))]
-    [Migration("20250211124059_InitialCreate")]
+    [Migration("20250211155722_InitialCreate")]
     partial class InitialCreate
     {
         protected override void BuildTargetModel(ModelBuilder modelBuilder)

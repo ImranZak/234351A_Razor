@@ -36,6 +36,13 @@ builder.Services.AddScoped<UserManager<ApplicationUser>>();
 builder.Services.AddScoped<RoleManager<IdentityRole>>();
 builder.Services.AddScoped<SignInManager<ApplicationUser>>();
 
+builder.Services.AddSession(options =>
+{
+    options.IdleTimeout = TimeSpan.FromMinutes(20);
+    options.Cookie.HttpOnly = true;
+    options.Cookie.IsEssential = true;
+});
+
 //  Enable Data Protection for encrypting sensitive data
 builder.Services.AddDataProtection()
     .PersistKeysToFileSystem(new DirectoryInfo(@"./keys"))
@@ -70,12 +77,13 @@ using (var scope = app.Services.CreateScope())
 
     foreach (var roleName in roleNames)
     {
-        if (!roleManager.RoleExistsAsync(roleName).Result)
+        if (!await roleManager.RoleExistsAsync(roleName)) // Fix deadlock issue
         {
-            roleManager.CreateAsync(new IdentityRole(roleName)).Wait();
+            await roleManager.CreateAsync(new IdentityRole(roleName));
         }
     }
 }
+
 
 //  Configure HTTP request pipeline
 if (app.Environment.IsDevelopment())
@@ -95,6 +103,7 @@ app.UseHttpsRedirection();
 app.UseStaticFiles();
 
 app.UseRouting();
+app.UseSession();
 
 app.UseAuthentication();
 app.UseAuthorization();
