@@ -21,28 +21,42 @@ namespace _234351A_Razor.Pages
         }
 
         [BindProperty]
-        public LoginViewModel LModel { get; set; }
+        public LoginViewModel LModel { get; set; } = new();
 
         public class LoginViewModel
         {
-            [Required] public string Email { get; set; }
-            [Required][DataType(DataType.Password)] public string Password { get; set; }
+            [Required]
+            [EmailAddress(ErrorMessage = "Invalid email format.")]
+            public string Email { get; set; }
+
+            [Required]
+            [DataType(DataType.Password)]
+            public string Password { get; set; }
+
             public bool RememberMe { get; set; }
+
+            [Required]
             public string RecaptchaToken { get; set; }
         }
 
         public async Task<IActionResult> OnPostAsync()
         {
+            if (!ModelState.IsValid)
+            {
+                return Page();
+            }
+
             // Verify Google reCAPTCHA
-            var httpClient = new HttpClient();
-            var response = await httpClient.PostAsync(
+            using var httpClient = new HttpClient();
+            var recaptchaResponse = await httpClient.PostAsync(
                 $"https://www.google.com/recaptcha/api/siteverify?secret=6LdTW9IqAAAAACxuDiS8O9i_XIvlueaPncuQIfz2&response={LModel.RecaptchaToken}",
                 null
             );
-            var jsonResponse = await response.Content.ReadAsStringAsync();
+
+            var jsonResponse = await recaptchaResponse.Content.ReadAsStringAsync();
             var recaptchaResult = JsonSerializer.Deserialize<RecaptchaResponse>(jsonResponse);
 
-            if (!recaptchaResult.success)
+            if (recaptchaResult == null || !recaptchaResult.success)
             {
                 ModelState.AddModelError("", "Captcha verification failed.");
                 return Page();
@@ -58,7 +72,10 @@ namespace _234351A_Razor.Pages
             var result = await _signInManager.PasswordSignInAsync(user, LModel.Password, LModel.RememberMe, lockoutOnFailure: true);
             if (result.Succeeded)
             {
-                return RedirectToPage("Index");
+                HttpContext.Session.Clear(); // Clear previous session to prevent session fixation
+                HttpContext.Session.SetString("UserId", user.Id); // Store user session
+
+                return LocalRedirect(Url.Content("~/"));
             }
             else if (result.IsLockedOut)
             {
@@ -70,6 +87,15 @@ namespace _234351A_Razor.Pages
             }
 
             return Page();
+        }
+
+        public class RecaptchaResponse
+        {
+            public bool success { get; set; }
+            public double score { get; set; }
+            public string action { get; set; }
+            public string challenge_ts { get; set; }
+            public string hostname { get; set; }
         }
     }
 }

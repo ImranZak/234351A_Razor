@@ -153,7 +153,7 @@ namespace _234351A_Razor.Pages
 
             if (result.Succeeded)
             {
-                return RedirectToPage("Login");
+                return RedirectToPage("/Login");
             }
 
             foreach (var error in result.Errors)

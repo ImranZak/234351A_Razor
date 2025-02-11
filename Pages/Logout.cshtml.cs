@@ -18,7 +18,7 @@ namespace _234351A_Razor.Pages
         public async Task<IActionResult> OnPostAsync()
         {
             await _signInManager.SignOutAsync();
-            return RedirectToPage("Login");
+            return RedirectToPage("/Login");
         }
     }
 }

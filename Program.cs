@@ -6,7 +6,7 @@ using _234351A_Razor.Models;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// Retrieve the correct connection string
+// Ensure database connection string is set
 var connectionString = builder.Configuration.GetConnectionString("AuthConnectionString");
 if (string.IsNullOrEmpty(connectionString))
 {
@@ -17,42 +17,67 @@ if (string.IsNullOrEmpty(connectionString))
 builder.Services.AddDbContext<AuthDbContext>(options =>
     options.UseSqlServer(connectionString));
 
-// Configure Identity with custom ApplicationUser model
-builder.Services.AddIdentity<ApplicationUser, IdentityRole>()
+//  Register Identity Services Properly
+builder.Services.AddIdentity<ApplicationUser, IdentityRole>(options =>
+{
+    options.SignIn.RequireConfirmedAccount = true;
+    options.Password.RequiredLength = 12;
+    options.Password.RequireDigit = true;
+    options.Password.RequireUppercase = true;
+    options.Password.RequireLowercase = true;
+    options.Password.RequireNonAlphanumeric = true;
+})
+    .AddRoles<IdentityRole>() //  Fix: Registers roles properly
     .AddEntityFrameworkStores<AuthDbContext>()
     .AddDefaultTokenProviders();
 
-// Enable Data Protection for encrypting sensitive data
+//  Ensure Identity Services Are Registered
+builder.Services.AddScoped<UserManager<ApplicationUser>>();
+builder.Services.AddScoped<RoleManager<IdentityRole>>();
+builder.Services.AddScoped<SignInManager<ApplicationUser>>();
+
+//  Enable Data Protection for encrypting sensitive data
 builder.Services.AddDataProtection()
     .PersistKeysToFileSystem(new DirectoryInfo(@"./keys"))
     .SetApplicationName("BookwormsOnline");
 
-// Configure authentication to require email confirmation
-builder.Services.Configure<IdentityOptions>(options =>
-{
-    options.SignIn.RequireConfirmedAccount = true;
-});
-
+//  Configure secure session management
 builder.Services.ConfigureApplicationCookie(options =>
 {
     options.LoginPath = "/Login";
     options.AccessDeniedPath = "/AccessDenied";
+    options.ReturnUrlParameter = "returnUrl";
     options.ExpireTimeSpan = TimeSpan.FromMinutes(20);
     options.SlidingExpiration = true;
     options.Cookie.HttpOnly = true;
     options.Cookie.SecurePolicy = CookieSecurePolicy.Always;
-    options.Cookie.SameSite = SameSiteMode.Strict;
+    options.Cookie.SameSite = SameSiteMode.Lax;
 });
 
-
-
-// Add Razor Pages and Exception Filter
+//  Add Razor Pages
 builder.Services.AddRazorPages();
 builder.Services.AddDatabaseDeveloperPageExceptionFilter();
 
 var app = builder.Build();
 
-// Configure HTTP request pipeline
+//  Apply database migrations & seed roles properly (NO `await` inside `Main()`)
+using (var scope = app.Services.CreateScope())
+{
+    var roleManager = scope.ServiceProvider.GetRequiredService<RoleManager<IdentityRole>>();
+    var userManager = scope.ServiceProvider.GetRequiredService<UserManager<ApplicationUser>>();
+
+    string[] roleNames = { "Admin", "Member" };
+
+    foreach (var roleName in roleNames)
+    {
+        if (!roleManager.RoleExistsAsync(roleName).Result)
+        {
+            roleManager.CreateAsync(new IdentityRole(roleName)).Wait();
+        }
+    }
+}
+
+//  Configure HTTP request pipeline
 if (app.Environment.IsDevelopment())
 {
     app.UseMigrationsEndPoint();
@@ -62,7 +87,8 @@ else
     app.UseExceptionHandler("/Error");
     app.UseHsts();
 }
-// Handle status codes like 404 (Not Found) and 403 (Access Denied) by redirecting to custom error pages
+
+// Handle status codes like 404 (Not Found) and 403 (Access Denied)
 app.UseStatusCodePagesWithRedirects("/Error/{0}");
 
 app.UseHttpsRedirection();
