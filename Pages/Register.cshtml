@@ -1,0 +1,95 @@
+﻿@page
+@model _234351A_Razor.Pages.RegisterModel
+@{
+    ViewData["Title"] = "Register";
+}
+
+<div class="container mt-5">
+    <div class="row justify-content-center align-items-center">
+        <div class="col-lg-6">
+            <h1 class="mb-3">Register</h1>
+
+            <form method="post" enctype="multipart/form-data">
+                <div asp-validation-summary="All" class="text-danger"></div>
+
+                <div class="mb-3">
+                    <label class="form-label" asp-for="RModel.FirstName">First Name</label>
+                    <input type="text" asp-for="RModel.FirstName" class="form-control" />
+                    <span asp-validation-for="RModel.FirstName" class="text-danger"></span>
+                </div>
+
+                <div class="mb-3">
+                    <label class="form-label" asp-for="RModel.LastName">Last Name</label>
+                    <input type="text" asp-for="RModel.LastName" class="form-control" />
+                    <span asp-validation-for="RModel.LastName" class="text-danger"></span>
+                </div>
+
+                <div class="mb-3">
+                    <label class="form-label" asp-for="RModel.Email">Email Address</label>
+                    <input type="email" asp-for="RModel.Email" class="form-control" />
+                    <span asp-validation-for="RModel.Email" class="text-danger"></span>
+                </div>
+
+                <div class="mb-3">
+                    <label class="form-label" asp-for="RModel.Password">Password</label>
+                    <input type="password" asp-for="RModel.Password" class="form-control" />
+                    <span asp-validation-for="RModel.Password" class="text-danger"></span>
+                </div>
+
+                <div class="mb-3">
+                    <label class="form-label" asp-for="RModel.ConfirmPassword">Confirm Password</label>
+                    <input type="password" asp-for="RModel.ConfirmPassword" class="form-control" />
+                    <span asp-validation-for="RModel.ConfirmPassword" class="text-danger"></span>
+                </div>
+
+                <div class="mb-3">
+                    <label class="form-label" asp-for="RModel.MobileNo">Mobile No</label>
+                    <input type="text" asp-for="RModel.MobileNo" class="form-control" />
+                    <span asp-validation-for="RModel.MobileNo" class="text-danger"></span>
+                </div>
+
+                <div class="mb-3">
+                    <label class="form-label" asp-for="RModel.BillingAddress">Billing Address</label>
+                    <input type="text" asp-for="RModel.BillingAddress" class="form-control" />
+                    <span asp-validation-for="RModel.BillingAddress" class="text-danger"></span>
+                </div>
+
+                <div class="mb-3">
+                    <label class="form-label" asp-for="RModel.ShippingAddress">Shipping Address</label>
+                    <input type="text" asp-for="RModel.ShippingAddress" class="form-control" />
+                    <span asp-validation-for="RModel.ShippingAddress" class="text-danger"></span>
+                </div>
+
+                <div class="mb-3">
+                    <label class="form-label" asp-for="RModel.CreditCard">Credit Card No</label>
+                    <input type="text" asp-for="RModel.CreditCard" class="form-control" />
+                    <span asp-validation-for="RModel.CreditCard" class="text-danger"></span>
+                </div>
+
+                <div class="mb-3">
+                    <label class="form-label">Profile Photo (JPG only)</label>
+                    <input type="file" asp-for="RModel.PhotoFile" class="form-control" accept=".jpg" />
+                    <span asp-validation-for="RModel.PhotoFile" class="text-danger"></span>
+                </div>
+
+                <!-- Google reCAPTCHA -->
+                <input type="hidden" id="g-recaptcha-response" name="g-recaptcha-response" />
+
+                <div class="mb-3">
+                    <button type="submit" class="btn btn-primary">Register</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+    <script src="https://www.google.com/recaptcha/api.js?render=6LdTW9IqAAAAAGV45FeA0E4gnuw_OAGwg9lYINVT"></script>
+    <script>
+        grecaptcha.ready(function () {
+            grecaptcha.execute('6LdTW9IqAAAAAGV45FeA0E4gnuw_OAGwg9lYINVT', { action: 'register' }).then(function (token) {
+                document.getElementById('g-recaptcha-response').value = token;
+            });
+        });
+    </script>
+}

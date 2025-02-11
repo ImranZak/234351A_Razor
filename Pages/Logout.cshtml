@@ -1,0 +1,17 @@
+﻿@page
+@model _234351A_Razor.Pages.LogoutModel
+@{
+    ViewData["Title"] = "Logout";
+}
+
+<div class="container mt-5">
+    <div class="row justify-content-center">
+        <div class="col-lg-4">
+            <h3>Are you sure you want to logout?</h3>
+            <form method="post">
+                <button type="submit" class="btn btn-danger">Logout</button>
+                <a class="btn btn-secondary" asp-page="/Index">Cancel</a>
+            </form>
+        </div>
+    </div>
+</div>

@@ -1,0 +1,52 @@
+﻿@page
+@model _234351A_Razor.Pages.LoginModel
+@{
+    ViewData["Title"] = "Login";
+}
+
+<div class="container mt-5">
+    <div class="row justify-content-center align-items-center">
+        <div class="col-lg-4">
+            <h1 class="mb-3">Login</h1>
+
+            <form method="post">
+                <div asp-validation-summary="All" class="text-danger"></div>
+
+                <div class="mb-3">
+                    <label class="form-label" asp-for="LModel.Email">Email Address</label>
+                    <input type="email" asp-for="LModel.Email" class="form-control" />
+                    <span asp-validation-for="LModel.Email" class="text-danger"></span>
+                </div>
+
+                <div class="mb-3">
+                    <label class="form-label" asp-for="LModel.Password">Password</label>
+                    <input type="password" asp-for="LModel.Password" class="form-control" />
+                    <span asp-validation-for="LModel.Password" class="text-danger"></span>
+                </div>
+
+                <div class="mb-3 form-check">
+                    <input type="checkbox" asp-for="LModel.RememberMe" class="form-check-input" />
+                    <label class="form-check-label" asp-for="LModel.RememberMe">Remember Me</label>
+                </div>
+
+                <!-- Google reCAPTCHA -->
+                <input type="hidden" id="g-recaptcha-response" name="g-recaptcha-response" />
+
+                <div class="mb-3">
+                    <button type="submit" class="btn btn-primary">Login</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+    <script src="https://www.google.com/recaptcha/api.js?render=6LdTW9IqAAAAAGV45FeA0E4gnuw_OAGwg9lYINVT"></script>
+    <script>
+        grecaptcha.ready(function () {
+            grecaptcha.execute('6LdTW9IqAAAAAGV45FeA0E4gnuw_OAGwg9lYINVT', { action: 'login' }).then(function (token) {
+                document.getElementById('g-recaptcha-response').value = token;
+            });
+        });
+    </script>
+}
