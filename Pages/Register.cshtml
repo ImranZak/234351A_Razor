@@ -10,7 +10,7 @@
         <div class="col-lg-6">
             <h1 class="mb-3">Register</h1>
 
-            <form method="post" enctype="multipart/form-data">
+            <form method="post" enctype="multipart/form-data" onsubmit="return validateRecaptcha();">
                 <div asp-validation-summary="All" class="text-danger"></div>
 
                 <div class="mb-3">
@@ -74,7 +74,7 @@
                 </div>
 
                 <!-- Google reCAPTCHA -->
-                <input type="hidden" id="RecaptchaToken" name="RecaptchaToken" />
+                <input type="hidden" id="RecaptchaToken" name="RModel.RecaptchaToken" />
 
                 <div class="mb-3">
                     <button type="submit" class="btn btn-primary">Register</button>
@@ -85,12 +85,32 @@
 </div>
 
 @section Scripts {
-    <script src="https://www.google.com/recaptcha/api.js?render='6LdTW9IqAAAAAGV45FeA0E4gnuw_OAGwg9lYINVT'"></script>
+    <script src="https://www.google.com/recaptcha/api.js?render=6LdTW9IqAAAAAGV45FeA0E4gnuw_OAGwg9lYINVT"></script>
     <script>
-        grecaptcha.ready(function () {
-            grecaptcha.execute('6LdTW9IqAAAAAGV45FeA0E4gnuw_OAGwg9lYINVT', { action: 'register' }).then(function (token) {
-                document.getElementById('RecaptchaToken').value = token;
+        function loadRecaptchaToken() {
+            grecaptcha.ready(function () {
+                grecaptcha.execute('6LdTW9IqAAAAAGV45FeA0E4gnuw_OAGwg9lYINVT', { action: 'register' })
+                    .then(function (token) {
+                        console.log("Generated reCAPTCHA Token:", token);
+                        document.getElementById('RecaptchaToken').value = token;
+                    })
+                    .catch(function (error) {
+                        console.error("reCAPTCHA Error:", error);
+                    });
             });
+        }
+
+        document.addEventListener("DOMContentLoaded", function () {
+            loadRecaptchaToken();
         });
+
+        function validateRecaptcha() {
+            let recaptchaToken = document.getElementById("RecaptchaToken").value;
+            if (!recaptchaToken) {
+                alert("Please wait for reCAPTCHA to load before submitting.");
+                return false;
+            }
+            return true;
+        }
     </script>
 }

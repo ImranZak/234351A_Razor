@@ -7,7 +7,10 @@ using System.Text.Json;
 using System.Threading.Tasks;
 using _234351A_Razor.Models;
 using System.Collections.Generic;
-using Microsoft.AspNetCore.Http;
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Logging;
+using System.Linq;
+using Microsoft.EntityFrameworkCore;
 
 namespace _234351A_Razor.Pages
 {
@@ -15,11 +18,18 @@ namespace _234351A_Razor.Pages
     {
         private readonly SignInManager<ApplicationUser> _signInManager;
         private readonly UserManager<ApplicationUser> _userManager;
+        private readonly IConfiguration _configuration;
+        private readonly ILogger<LoginModel> _logger;
 
-        public LoginModel(SignInManager<ApplicationUser> signInManager, UserManager<ApplicationUser> userManager)
+        public LoginModel(SignInManager<ApplicationUser> signInManager,
+                          UserManager<ApplicationUser> userManager,
+                          IConfiguration configuration,
+                          ILogger<LoginModel> logger)
         {
             _signInManager = signInManager;
             _userManager = userManager;
+            _configuration = configuration;
+            _logger = logger;
         }
 
         [BindProperty]
@@ -37,7 +47,6 @@ namespace _234351A_Razor.Pages
 
             public bool RememberMe { get; set; }
 
-            [Required]
             public string RecaptchaToken { get; set; }
         }
 
@@ -45,67 +54,97 @@ namespace _234351A_Razor.Pages
         {
             if (!ModelState.IsValid)
             {
+                _logger.LogWarning("Model validation failed.");
+                return Page();
+            }
+
+            _logger.LogInformation("User attempting login: {Email}", LModel.Email);
+
+            // Fix: Ensure reCAPTCHA Token is Provided
+            if (string.IsNullOrEmpty(LModel.RecaptchaToken))
+            {
+                _logger.LogWarning("Captcha verification failed. No token received.");
+                ModelState.AddModelError("", "Captcha verification failed. No token received.");
                 return Page();
             }
 
             // Verify Google reCAPTCHA
+            string recaptchaSecretKey = _configuration["GoogleReCaptcha:SecretKey"];
+            if (string.IsNullOrEmpty(recaptchaSecretKey))
+            {
+                _logger.LogError("Recaptcha secret key is missing in configuration.");
+                ModelState.AddModelError("", "Recaptcha configuration is missing.");
+                return Page();
+            }
+
             using var httpClient = new HttpClient();
             var postData = new Dictionary<string, string>
             {
-                { "secret", "6LdTW9IqAAAAACxuDiS8O9i_XIvlueaPncuQIfz2" },
+                { "secret", recaptchaSecretKey },
                 { "response", LModel.RecaptchaToken }
             };
 
             var content = new FormUrlEncodedContent(postData);
             var recaptchaResponse = await httpClient.PostAsync("https://www.google.com/recaptcha/api/siteverify", content);
             var jsonResponse = await recaptchaResponse.Content.ReadAsStringAsync();
-            var recaptchaResult = JsonSerializer.Deserialize<RecaptchaResponse>(jsonResponse);
 
+            _logger.LogInformation("Google reCAPTCHA API Response: {Response}", jsonResponse);
+
+            var recaptchaResult = JsonSerializer.Deserialize<RecaptchaResponse>(jsonResponse);
             if (recaptchaResult == null || !recaptchaResult.success)
             {
+                _logger.LogWarning("reCAPTCHA failed: {Errors}", recaptchaResult?.error_codes);
                 ModelState.AddModelError("", "Captcha verification failed.");
                 return Page();
             }
 
-            // Check if user exists
-            var user = await _userManager.FindByEmailAsync(LModel.Email);
+            // Fix: Normalize email (case-insensitive login)
+            string normalizedEmail = LModel.Email.Trim().ToUpper();
+
+            // Fix: Find user using normalized email
+            var user = await _userManager.Users.FirstOrDefaultAsync(u => u.NormalizedEmail == normalizedEmail);
             if (user == null)
             {
+                _logger.LogWarning("Login failed: User not found. Email: {Email}", normalizedEmail);
+                ModelState.AddModelError("", "Invalid login attempt.");
+                return Page();
+            }
+
+            _logger.LogInformation("User found in database: {Email}", user.Email);
+
+            // Fix: Debug password hashing
+            bool passwordCheck = await _userManager.CheckPasswordAsync(user, LModel.Password);
+            _logger.LogInformation("Password Check Result: {Result}", passwordCheck);
+
+            if (!passwordCheck)
+            {
+                _logger.LogWarning("Password mismatch for user: {Email}", normalizedEmail);
                 ModelState.AddModelError("", "Invalid login attempt.");
                 return Page();
             }
 
             // Attempt login
             var result = await _signInManager.PasswordSignInAsync(user, LModel.Password, LModel.RememberMe, lockoutOnFailure: true);
+
+            _logger.LogInformation("Sign-in result: Succeeded={Succeeded}, LockedOut={LockedOut}, RequiresTwoFactor={RequiresTwoFactor}",
+                result.Succeeded, result.IsLockedOut, result.RequiresTwoFactor);
+
             if (result.Succeeded)
             {
-                // Clear previous session to prevent session fixation attacks
-                HttpContext.Session.Clear();
-
-                // Generate a new session authentication token
-                string authToken = System.Guid.NewGuid().ToString();
-                HttpContext.Session.SetString("UserId", user.Id);
-                HttpContext.Session.SetString("AuthToken", authToken);
-
-                Response.Cookies.Append("AuthToken", authToken, new CookieOptions
-                {
-                    HttpOnly = true,
-                    Secure = true,
-                    SameSite = SameSiteMode.Strict
-                });
-
-                return LocalRedirect(Url.Content("~/"));
+                return RedirectToPage("/Index");
             }
             else if (result.IsLockedOut)
             {
+                _logger.LogWarning("Account locked: {Email}", normalizedEmail);
                 ModelState.AddModelError("", "Account locked due to multiple failed attempts. Try again later.");
+                return Page();
             }
             else
             {
+                _logger.LogWarning("Invalid login attempt for user: {Email}", normalizedEmail);
                 ModelState.AddModelError("", "Invalid login attempt.");
+                return Page();
             }
-
-            return Page();
         }
 
         public class RecaptchaResponse
@@ -115,6 +154,7 @@ namespace _234351A_Razor.Pages
             public string action { get; set; }
             public string challenge_ts { get; set; }
             public string hostname { get; set; }
+            public List<string> error_codes { get; set; }
         }
     }
 }

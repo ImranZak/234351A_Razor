@@ -27,7 +27,7 @@ builder.Services.AddIdentity<ApplicationUser, IdentityRole>(options =>
     options.Password.RequireLowercase = true;
     options.Password.RequireNonAlphanumeric = true;
 })
-    .AddRoles<IdentityRole>() //  Fix: Registers roles properly
+    .AddRoles<IdentityRole>() // Registers roles properly
     .AddEntityFrameworkStores<AuthDbContext>()
     .AddDefaultTokenProviders();
 
@@ -36,6 +36,7 @@ builder.Services.AddScoped<UserManager<ApplicationUser>>();
 builder.Services.AddScoped<RoleManager<IdentityRole>>();
 builder.Services.AddScoped<SignInManager<ApplicationUser>>();
 
+//  Configure session management
 builder.Services.AddSession(options =>
 {
     options.IdleTimeout = TimeSpan.FromMinutes(20);
@@ -67,23 +68,27 @@ builder.Services.AddDatabaseDeveloperPageExceptionFilter();
 
 var app = builder.Build();
 
-//  Apply database migrations & seed roles properly (NO `await` inside `Main()`)
+// Apply database migrations & seed roles properly (NO `await` inside `Main()`)
 using (var scope = app.Services.CreateScope())
 {
-    var roleManager = scope.ServiceProvider.GetRequiredService<RoleManager<IdentityRole>>();
-    var userManager = scope.ServiceProvider.GetRequiredService<UserManager<ApplicationUser>>();
+    var services = scope.ServiceProvider;
+    var roleManager = services.GetRequiredService<RoleManager<IdentityRole>>();
+    var userManager = services.GetRequiredService<UserManager<ApplicationUser>>();
 
+    await SeedRolesAndAdmin(roleManager, userManager);
+}
+
+async Task SeedRolesAndAdmin(RoleManager<IdentityRole> roleManager, UserManager<ApplicationUser> userManager)
+{
     string[] roleNames = { "Admin", "Member" };
-
     foreach (var roleName in roleNames)
     {
-        if (!await roleManager.RoleExistsAsync(roleName)) // Fix deadlock issue
+        if (!await roleManager.RoleExistsAsync(roleName))
         {
             await roleManager.CreateAsync(new IdentityRole(roleName));
         }
     }
 }
-
 
 //  Configure HTTP request pipeline
 if (app.Environment.IsDevelopment())
@@ -93,21 +98,33 @@ if (app.Environment.IsDevelopment())
 else
 {
     app.UseExceptionHandler("/Error");
+
+    //  FIX: Allow reCAPTCHA through Content Security Policy (CSP)
+    app.Use(async (context, next) =>
+    {
+        context.Response.Headers.Append("Content-Security-Policy",
+            "frame-ancestors 'self' https://www.google.com; " +
+            "script-src 'self' https://www.google.com https://www.gstatic.com; " +
+            "frame-src 'self' https://www.google.com https://www.recaptcha.net;");
+        await next();
+    });
+
+
     app.UseHsts();
 }
 
 // Handle status codes like 404 (Not Found) and 403 (Access Denied)
-app.UseStatusCodePagesWithRedirects("/Error/{0}");
+app.UseStatusCodePagesWithReExecute("/Error", "?statusCode={0}");
 
 app.UseHttpsRedirection();
 app.UseStaticFiles();
 
 app.UseRouting();
-app.UseSession();
 
+//  FIX: Ensure `UseSession()` is placed BEFORE `UseAuthentication()`
+app.UseSession();
 app.UseAuthentication();
 app.UseAuthorization();
 
 app.MapRazorPages();
-
 app.Run();

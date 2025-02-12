@@ -11,6 +11,7 @@ namespace _234351A_Razor.Data
             : base(options)
         {
         }
+        public AuthDbContext() { }
 
         protected override void OnModelCreating(ModelBuilder builder)
         {

@@ -1,0 +1,15 @@
+﻿@page
+@model _234351A_Razor.Pages.ConfirmEmailModel
+@{
+    ViewData["Title"] = "Confirm Email";
+}
+
+<div class="container text-center mt-5">
+    <h1>Email Confirmation</h1>
+    <p class="lead">@Model.Message</p>
+
+    @if (Model.Message.Contains("successfully"))
+    {
+        <a href="/Login" class="btn btn-primary">Go to Login</a>
+    }
+</div>

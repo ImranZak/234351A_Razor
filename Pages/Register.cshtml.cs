@@ -10,6 +10,12 @@ using System.Net.Http;
 using System.Text.Json;
 using System.Web;
 using System.Collections.Generic;
+using Microsoft.Extensions.Logging;
+using Microsoft.AspNetCore.WebUtilities;
+using System.Text;
+using Microsoft.Extensions.Configuration;
+using System.Net.Mail;
+using System.Text.Encodings.Web;
 
 namespace _234351A_Razor.Pages
 {
@@ -18,12 +24,20 @@ namespace _234351A_Razor.Pages
         private readonly UserManager<ApplicationUser> _userManager;
         private readonly IDataProtector _protector;
         private readonly IWebHostEnvironment _environment;
+        private readonly ILogger<RegisterModel> _logger;
+        private readonly IConfiguration _configuration;
 
-        public RegisterModel(UserManager<ApplicationUser> userManager, IDataProtectionProvider provider, IWebHostEnvironment environment)
+        public RegisterModel(UserManager<ApplicationUser> userManager,
+                             IDataProtectionProvider provider,
+                             IWebHostEnvironment environment,
+                             ILogger<RegisterModel> logger,
+                             IConfiguration configuration)
         {
             _userManager = userManager;
             _protector = provider.CreateProtector("CreditCardProtector");
             _environment = environment;
+            _logger = logger;
+            _configuration = configuration;
         }
 
         [BindProperty]
@@ -68,10 +82,8 @@ namespace _234351A_Razor.Pages
             [RegularExpression(@"^\d{16}$", ErrorMessage = "Credit Card number must be 16 digits.")]
             public string CreditCard { get; set; }
 
-            [Required]
-            public string RecaptchaToken { get; set; } // Added missing field
-
-            public IFormFile PhotoFile { get; set; } // Image Upload Handling
+            public string? RecaptchaToken { get; set; }
+            public IFormFile PhotoFile { get; set; }
         }
 
         public async Task<IActionResult> OnPostAsync()
@@ -81,11 +93,20 @@ namespace _234351A_Razor.Pages
                 return Page();
             }
 
-            // Verify Google reCAPTCHA
+            _logger.LogInformation("Received reCAPTCHA token: {Token}", RModel.RecaptchaToken);
+
+            if (string.IsNullOrEmpty(RModel.RecaptchaToken))
+            {
+                ModelState.AddModelError("", "Captcha verification failed. No token received.");
+                return Page();
+            }
+
+            // Verify Google reCAPTCHA using secret key from appsettings.json
+            string recaptchaSecretKey = _configuration["GoogleReCaptcha:SecretKey"];
             using var httpClient = new HttpClient();
             var postData = new Dictionary<string, string>
             {
-                { "secret", "6LdTW9IqAAAAACxuDiS8O9i_XIvlueaPncuQIfz2" },
+                { "secret", recaptchaSecretKey },
                 { "response", RModel.RecaptchaToken }
             };
 
@@ -96,11 +117,10 @@ namespace _234351A_Razor.Pages
 
             if (recaptchaResult == null || !recaptchaResult.success)
             {
-                ModelState.AddModelError("", "Captcha verification failed.");
+                ModelState.AddModelError("", "Captcha verification failed. Please try again.");
                 return Page();
             }
 
-            // Check if email already exists
             var existingUser = await _userManager.FindByEmailAsync(RModel.Email);
             if (existingUser != null)
             {
@@ -108,38 +128,24 @@ namespace _234351A_Razor.Pages
                 return Page();
             }
 
-            // Sanitize input fields
             RModel.FirstName = HttpUtility.HtmlEncode(RModel.FirstName);
             RModel.LastName = HttpUtility.HtmlEncode(RModel.LastName);
             RModel.BillingAddress = HttpUtility.HtmlEncode(RModel.BillingAddress);
             RModel.ShippingAddress = HttpUtility.HtmlEncode(RModel.ShippingAddress);
-
-            // Encrypt Credit Card
             string encryptedCreditCard = _protector.Protect(RModel.CreditCard);
 
-            // Handle Profile Photo Upload
             string photoPath = null;
             if (RModel.PhotoFile != null)
             {
-                var fileExt = Path.GetExtension(RModel.PhotoFile.FileName).ToLower();
-                if (fileExt != ".jpg")
-                {
-                    ModelState.AddModelError("", "Only JPG images are allowed.");
-                    return Page();
-                }
-
                 string uploadsFolder = Path.Combine(_environment.WebRootPath, "uploads");
                 Directory.CreateDirectory(uploadsFolder);
-                string uniqueFileName = $"{Guid.NewGuid()}{fileExt}";
+                string uniqueFileName = $"{Guid.NewGuid()}{Path.GetExtension(RModel.PhotoFile.FileName)}";
                 photoPath = Path.Combine("uploads", uniqueFileName);
 
-                using (var fileStream = new FileStream(Path.Combine(uploadsFolder, uniqueFileName), FileMode.Create))
-                {
-                    await RModel.PhotoFile.CopyToAsync(fileStream);
-                }
+                using var fileStream = new FileStream(Path.Combine(uploadsFolder, uniqueFileName), FileMode.Create);
+                await RModel.PhotoFile.CopyToAsync(fileStream);
             }
 
-            // Create User
             var user = new ApplicationUser
             {
                 FirstName = RModel.FirstName,
@@ -150,14 +156,24 @@ namespace _234351A_Razor.Pages
                 MobileNo = RModel.MobileNo,
                 BillingAddress = RModel.BillingAddress,
                 ShippingAddress = RModel.ShippingAddress,
-                PhotoPath = photoPath
+                PhotoPath = photoPath,
+                EmailConfirmed = false // Default to not confirmed
             };
 
             var result = await _userManager.CreateAsync(user, RModel.Password);
 
             if (result.Succeeded)
             {
-                return RedirectToPage("/Login");
+                var token = await _userManager.GenerateEmailConfirmationTokenAsync(user);
+                var encodedToken = WebEncoders.Base64UrlEncode(Encoding.UTF8.GetBytes(token));
+                var confirmationLink = Url.Page("/ConfirmEmail",
+                                                pageHandler: null,
+                                                values: new { userId = user.Id, token = encodedToken },
+                                                protocol: Request.Scheme);
+
+                SendEmail(user.Email, "Confirm Your Email", $"Click here to confirm your email: <a href='{HtmlEncoder.Default.Encode(confirmationLink)}'>Confirm Email</a>");
+
+                return RedirectToPage("/CheckEmail");
             }
 
             foreach (var error in result.Errors)
@@ -168,6 +184,27 @@ namespace _234351A_Razor.Pages
             return Page();
         }
 
+        private void SendEmail(string toEmail, string subject, string body)
+        {
+            var smtpClient = new SmtpClient(_configuration["EmailSettings:SmtpServer"])
+            {
+                Port = int.Parse(_configuration["EmailSettings:Port"]),
+                Credentials = new System.Net.NetworkCredential(
+                    _configuration["EmailSettings:Username"],
+                    _configuration["EmailSettings:Password"]),
+                EnableSsl = true,
+            };
+
+            smtpClient.Send(new MailMessage
+            {
+                From = new MailAddress(_configuration["EmailSettings:SenderEmail"]),
+                Subject = subject,
+                Body = body,
+                IsBodyHtml = true,
+                To = { toEmail }
+            });
+        }
+
         public class RecaptchaResponse
         {
             public bool success { get; set; }
@@ -175,6 +212,7 @@ namespace _234351A_Razor.Pages
             public string action { get; set; }
             public string challenge_ts { get; set; }
             public string hostname { get; set; }
+            public List<string> error_codes { get; set; }
         }
     }
 }

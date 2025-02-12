@@ -6,6 +6,14 @@
 
 <div class="container mt-5 text-center">
     <h1 class="text-danger">Oops! Something went wrong.</h1>
-    <p>We're sorry for the inconvenience. Please try again later.</p>
-    <a class="btn btn-primary" asp-page="/Index">Return to Home</a>
+    <p>@Model.ErrorMessage</p>
+
+    @if (User.Identity.IsAuthenticated)
+    {
+        <a class="btn btn-primary" asp-page="/Index">Return to Home</a>
+    }
+    else
+    {
+        <a class="btn btn-secondary" asp-page="/Login">Go to Login</a>
+    }
 </div>
