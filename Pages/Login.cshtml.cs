@@ -122,16 +122,11 @@ namespace _234351A_Razor.Pages
 
             // Verify password
             bool passwordCheck = await _userManager.CheckPasswordAsync(user, LModel.Password);
-            _logger.LogInformation("Password Check Result: {Result}", passwordCheck);
-
             if (!passwordCheck)
             {
                 _logger.LogWarning("Password mismatch for user: {Email}", normalizedEmail);
-
-                // Increment failed access attempts
                 await _userManager.AccessFailedAsync(user);
 
-                // Check if the user should be locked out
                 if (await _userManager.IsLockedOutAsync(user))
                 {
                     _logger.LogWarning("Account locked due to too many failed attempts: {Email}", normalizedEmail);
@@ -148,14 +143,22 @@ namespace _234351A_Razor.Pages
             // Reset failed access count on successful login
             await _userManager.ResetAccessFailedCountAsync(user);
 
+            // Ensure session fixation prevention
+            HttpContext.Session.Clear();
+
+            // Generate a unique session token for this login
+            string sessionToken = Guid.NewGuid().ToString();
+            user.SecurityStamp = sessionToken; // Use SecurityStamp for tracking session
+            await _userManager.UpdateAsync(user);
+
             // Attempt login
             var result = await _signInManager.PasswordSignInAsync(user, LModel.Password, LModel.RememberMe, lockoutOnFailure: true);
-
-            _logger.LogInformation("Sign-in result: Succeeded={Succeeded}, LockedOut={LockedOut}, RequiresTwoFactor={RequiresTwoFactor}",
-                result.Succeeded, result.IsLockedOut, result.RequiresTwoFactor);
-
             if (result.Succeeded)
             {
+                // Store session token in session storage
+                HttpContext.Session.SetString("AuthToken", sessionToken);
+
+                _logger.LogInformation("User logged in successfully: {Email}", user.Email);
                 return RedirectToPage("/Index");
             }
             else if (result.IsLockedOut)

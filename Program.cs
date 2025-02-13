@@ -50,12 +50,14 @@ builder.Services.AddScoped<UserManager<ApplicationUser>>();
 builder.Services.AddScoped<RoleManager<IdentityRole>>();
 builder.Services.AddScoped<SignInManager<ApplicationUser>>();
 
-//  Configure session management
+// Secure session settings
 builder.Services.AddSession(options =>
 {
-    options.IdleTimeout = TimeSpan.FromMinutes(20);
-    options.Cookie.HttpOnly = true;
+    options.IdleTimeout = TimeSpan.FromMinutes(20); // Auto logout after 20 minutes of inactivity
+    options.Cookie.HttpOnly = true; // Prevent JavaScript access to session
     options.Cookie.IsEssential = true;
+    options.Cookie.SecurePolicy = CookieSecurePolicy.Always; // Always send session cookie over HTTPS
+    options.Cookie.SameSite = SameSiteMode.Strict; // Prevent CSRF attacks
 });
 
 //  Enable Data Protection for encrypting sensitive data

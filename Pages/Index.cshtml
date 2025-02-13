@@ -1,10 +1,25 @@
 ﻿@page
-@model IndexModel
+@model _234351A_Razor.Pages.IndexModel
 @{
-    ViewData["Title"] = "Home page";
+    ViewData["Title"] = "Welcome";
 }
 
-<div class="text-center">
-    <h1 class="display-4">Welcome</h1>
-    <p>Learn about <a href="https://docs.microsoft.com/aspnet/core">building Web apps with ASP.NET Core</a>.</p>
+<div class="container mt-5">
+    <h1 class="mb-4">Welcome, @Model.CurrentUser.FirstName @Model.CurrentUser.LastName</h1>
+
+    <div class="card p-4">
+        <h4>Your Profile Information</h4>
+        <p><strong>Email:</strong> @Model.CurrentUser.Email</p>
+        <p><strong>Mobile No:</strong> @Model.CurrentUser.MobileNo</p>
+        <p><strong>Billing Address:</strong> @Model.CurrentUser.BillingAddress</p>
+        <p><strong>Shipping Address:</strong> @Model.CurrentUser.ShippingAddress</p>
+        <p><strong>Credit Card (Decrypted):</strong> @Model.CurrentUser.CreditCard</p>
+
+        @if (!string.IsNullOrEmpty(Model.CurrentUser.PhotoPath))
+        {
+            <div class="mt-3">
+                <img src="@Model.CurrentUser.PhotoPath" class="img-thumbnail" width="200" />
+            </div>
+        }
+    </div>
 </div>
