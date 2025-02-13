@@ -22,24 +22,24 @@ namespace _234351A_Razor.Pages
             _userManager = userManager;
             _logger = logger;
         }
-
+        [ValidateAntiForgeryToken]
         public async Task<IActionResult> OnPostAsync()
         {
             var user = await _userManager.GetUserAsync(User);
             if (user != null)
             {
-                user.SecurityStamp = Guid.NewGuid().ToString(); // Invalidate session
+                // Invalidate all active sessions
+                user.SecurityStamp = Guid.NewGuid().ToString();
                 await _userManager.UpdateAsync(user);
 
-                // Log logout event
-                await LogAuditEvent(user.Email, "User Logged Out");
+                // Clear session and cookies
+                await _signInManager.SignOutAsync();
+                HttpContext.Session.Clear();
+                Response.Cookies.Delete(".AspNetCore.Session");
+
+                return RedirectToPage("/Login", new { Message = "You have been logged out." });
             }
-
-            await _signInManager.SignOutAsync();
-            HttpContext.Session.Clear();
-            Response.Cookies.Delete(".AspNetCore.Session");
-
-            return RedirectToPage("/Login", new { Message = "You have been logged out." });
+            return RedirectToPage("/Index");
         }
 
         // Audit Logging Method

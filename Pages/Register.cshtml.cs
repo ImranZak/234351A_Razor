@@ -85,7 +85,7 @@ namespace _234351A_Razor.Pages
             public string? RecaptchaToken { get; set; }
             public IFormFile PhotoFile { get; set; }
         }
-
+        [ValidateAntiForgeryToken]
         public async Task<IActionResult> OnPostAsync()
         {
             if (!ModelState.IsValid)
@@ -186,8 +186,7 @@ namespace _234351A_Razor.Pages
                 // HTML-encode the link before inserting it in the email body
                 var encodedLink = HtmlEncoder.Default.Encode(confirmationLink);
 
-                _logger.LogInformation("Generated Confirmation Link: {Link}", confirmationLink);
-                SendEmail(user.Email, "Confirm Your Email",
+                SendEmail(user.Email, "Confirm Your Email", 
                     $"Click here to confirm your email: <a href='{encodedLink}'>Confirm Email</a>");
 
                 return RedirectToPage("/Login", new { Message = "Registration successful! Please check your email for confirmation." });

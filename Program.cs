@@ -35,15 +35,16 @@ builder.Services.AddIdentity<ApplicationUser, IdentityRole>(options =>
     options.Password.RequireUppercase = true;
     options.Password.RequireLowercase = true;
     options.Password.RequireNonAlphanumeric = true;
-
-    // Configure account lockout settings
-    options.Lockout.AllowedForNewUsers = true;
-    options.Lockout.MaxFailedAccessAttempts = 2; // Lock after 3 failed attempts
-    options.Lockout.DefaultLockoutTimeSpan = TimeSpan.FromMinutes(15); // Lock for 15 minutes
+    options.Password.RequiredUniqueChars = 2;
+    options.Password.RequiredLength = 12;
+    options.Lockout.MaxFailedAccessAttempts = 3;
+    options.Lockout.DefaultLockoutTimeSpan = TimeSpan.FromMinutes(30); // Minimum time before password change
 })
 .AddRoles<IdentityRole>()
 .AddEntityFrameworkStores<AuthDbContext>()
 .AddDefaultTokenProviders();
+
+
 
 //  Ensure Identity Services Are Registered
 builder.Services.AddScoped<UserManager<ApplicationUser>>();
@@ -141,6 +142,36 @@ app.UseRouting();
 //  FIX: Ensure `UseSession()` is placed BEFORE `UseAuthentication()`
 app.UseSession();
 app.UseAuthentication();
+app.Use(async (context, next) =>
+{
+    var userManager = context.RequestServices.GetRequiredService<UserManager<ApplicationUser>>();
+    var signInManager = context.RequestServices.GetRequiredService<SignInManager<ApplicationUser>>();
+
+    // Skip session validation for email confirmation requests
+    if (context.Request.Path.StartsWithSegments("/ConfirmEmail"))
+    {
+        await next();
+        return;
+    }
+
+    var user = await userManager.GetUserAsync(context.User);
+    if (user != null)
+    {
+        string storedSecurityStamp = await userManager.GetSecurityStampAsync(user);
+        string? sessionToken = context.Session.GetString("AuthToken");
+
+        if (sessionToken == null || storedSecurityStamp != sessionToken)
+        {
+            // Invalidate session and force logout
+            await signInManager.SignOutAsync();
+            context.Session.Clear();
+            context.Response.Redirect("/Login?Message=SessionExpired");
+            return;
+        }
+    }
+
+    await next();
+});
 app.UseAuthorization();
 
 app.MapRazorPages();

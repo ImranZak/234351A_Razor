@@ -14,6 +14,8 @@ using Microsoft.EntityFrameworkCore;
 using System.Web;
 using System;
 using _234351A_Razor.Data;
+using System.Net.Mail;
+using System.Net;
 
 namespace _234351A_Razor.Pages
 {
@@ -56,6 +58,7 @@ namespace _234351A_Razor.Pages
             public string RecaptchaToken { get; set; }
         }
 
+        [ValidateAntiForgeryToken]
         public async Task<IActionResult> OnPostAsync()
         {
             if (!ModelState.IsValid)
@@ -113,10 +116,7 @@ namespace _234351A_Razor.Pages
             {
                 _logger.LogWarning("Login failed: User not found. Email: {Email}", normalizedEmail);
                 ModelState.AddModelError("", "Invalid login attempt.");
-
-                // Log failed login attempt
                 await LogAuditEvent(normalizedEmail, "Login Failed");
-
                 return Page();
             }
 
@@ -127,10 +127,7 @@ namespace _234351A_Razor.Pages
             {
                 _logger.LogWarning("Account locked out: {Email}", normalizedEmail);
                 ModelState.AddModelError("", "Your account is locked due to multiple failed attempts. Try again later.");
-
-                // Log account lockout
                 await LogAuditEvent(user.Email, "Account Locked Out");
-
                 return Page();
             }
 
@@ -148,16 +145,11 @@ namespace _234351A_Razor.Pages
                 {
                     _logger.LogWarning("Account locked due to too many failed attempts: {Email}", normalizedEmail);
                     ModelState.AddModelError("", "Account locked due to multiple failed attempts. Try again later.");
-
-                    // Log account lockout
                     await LogAuditEvent(user.Email, "Account Locked Out");
-
                 }
                 else
                 {
                     ModelState.AddModelError("", "Invalid login attempt.");
-
-                    // Log failed password attempt
                     await LogAuditEvent(user.Email, "Login Failed - Incorrect Password");
                 }
 
@@ -173,18 +165,40 @@ namespace _234351A_Razor.Pages
             // Ensure session fixation prevention
             HttpContext.Session.Clear();
 
-            // Generate a unique session token for this login
+            // Check if another session is active
+            var existingToken = await _userManager.GetSecurityStampAsync(user);
+            if (!string.IsNullOrEmpty(existingToken))
+            {
+                // Logout the previous session
+                await _signInManager.SignOutAsync();
+            }
+
+            // Generate a new session token for this login
             string sessionToken = Guid.NewGuid().ToString();
             user.SecurityStamp = sessionToken; // Use SecurityStamp for tracking session
             await _userManager.UpdateAsync(user);
 
-            // Attempt login
+            // Store session token in session storage
+            HttpContext.Session.SetString("AuthToken", sessionToken);
+
+            // Check if 2FA is enabled for the user
+            if (await _userManager.GetTwoFactorEnabledAsync(user))
+            {
+                // Generate the 2FA token and send it via email
+                var token = await _userManager.GenerateTwoFactorTokenAsync(user, "Email");
+
+                // Send token via email
+                var emailBody = $"Your 2FA code is: {token}";
+                await SendEmail(user.Email, "Your 2FA Code", emailBody);
+
+                // Redirect user to a page to enter the 2FA code
+                return RedirectToPage("/Account/Verify2FA", new { userId = user.Id });
+            }
+
+            // Proceed with normal login if 2FA is not enabled
             var result = await _signInManager.PasswordSignInAsync(user, LModel.Password, LModel.RememberMe, lockoutOnFailure: true);
             if (result.Succeeded)
             {
-                // Store session token in session storage
-                HttpContext.Session.SetString("AuthToken", sessionToken);
-
                 _logger.LogInformation("User logged in successfully: {Email}", user.Email);
                 return RedirectToPage("/Index");
             }
@@ -192,20 +206,14 @@ namespace _234351A_Razor.Pages
             {
                 _logger.LogWarning("Account locked: {Email}", normalizedEmail);
                 ModelState.AddModelError("", "Account locked due to multiple failed attempts. Try again later.");
-
-                // Log account lockout
                 await LogAuditEvent(user.Email, "Account Locked Out");
-
                 return Page();
             }
             else
             {
                 _logger.LogWarning("Invalid login attempt for user: {Email}", normalizedEmail);
                 ModelState.AddModelError("", "Invalid login attempt.");
-
-                // Log failed login attempt
                 await LogAuditEvent(user.Email, "Login Failed");
-
                 return Page();
             }
         }
@@ -223,6 +231,26 @@ namespace _234351A_Razor.Pages
 
             _context.AuditLogs.Add(logEntry);
             await _context.SaveChangesAsync();
+        }
+
+        private async Task SendEmail(string toEmail, string subject, string body)
+        {
+            var smtpClient = new SmtpClient(_configuration["EmailSettings:SmtpServer"])
+            {
+                Port = int.Parse(_configuration["EmailSettings:Port"]),
+                Credentials = new NetworkCredential(_configuration["EmailSettings:Username"], _configuration["EmailSettings:Password"]),
+                EnableSsl = true,
+            };
+
+            var mailMessage = new MailMessage
+            {
+                From = new MailAddress(_configuration["EmailSettings:SenderEmail"]),
+                Subject = subject,
+                Body = body,
+                IsBodyHtml = true
+            };
+            mailMessage.To.Add(toEmail);
+            smtpClient.Send(mailMessage);
         }
 
         public class RecaptchaResponse

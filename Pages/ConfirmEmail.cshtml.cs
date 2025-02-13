@@ -26,12 +26,10 @@ namespace _234351A_Razor.Pages
 
         public async Task<IActionResult> OnGetAsync(string userId, string token)
         {
-            _logger.LogInformation("Received Confirmation Request - UserID: {UserID}, Token: {Token}", userId, token);
-
+ 
             if (string.IsNullOrEmpty(userId) || string.IsNullOrEmpty(token))
             {
-                _logger.LogWarning("Invalid email confirmation request: Missing user ID or token.");
-                Message = "Invalid email confirmation link.";
+                 Message = "Invalid email confirmation link.";
                 return Page();
             }
             // Encode inputs before displaying
@@ -41,7 +39,6 @@ namespace _234351A_Razor.Pages
             var user = await _userManager.FindByIdAsync(userId);
             if (user == null)
             {
-                _logger.LogWarning("Invalid email confirmation request: User not found.");
                 Message = "Invalid email confirmation link.";
                 return Page();
             }
@@ -51,7 +48,6 @@ namespace _234351A_Razor.Pages
                 // Decode the token before confirming the email
                 var decodedTokenBytes = WebEncoders.Base64UrlDecode(token);
                 var decodedToken = Encoding.UTF8.GetString(decodedTokenBytes);
-                _logger.LogInformation("Decoded Token: {DecodedToken}", decodedToken);
 
                 var result = await _userManager.ConfirmEmailAsync(user, decodedToken);
 
@@ -59,6 +55,9 @@ namespace _234351A_Razor.Pages
                 {
                     _logger.LogInformation("User {Email} confirmed their email successfully.", user.Email);
                     Message = "Email confirmed successfully. You can now log in.";
+
+                    // Reset SecurityStamp only after email confirmation succeeds
+                    await _userManager.UpdateSecurityStampAsync(user);
                 }
                 else
                 {
