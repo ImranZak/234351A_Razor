@@ -60,7 +60,7 @@ namespace _234351A_Razor.Pages
 
             _logger.LogInformation("User attempting login: {Email}", LModel.Email);
 
-            // Fix: Ensure reCAPTCHA Token is Provided
+            // Ensure reCAPTCHA Token is Provided
             if (string.IsNullOrEmpty(LModel.RecaptchaToken))
             {
                 _logger.LogWarning("Captcha verification failed. No token received.");
@@ -79,10 +79,10 @@ namespace _234351A_Razor.Pages
 
             using var httpClient = new HttpClient();
             var postData = new Dictionary<string, string>
-            {
-                { "secret", recaptchaSecretKey },
-                { "response", LModel.RecaptchaToken }
-            };
+    {
+        { "secret", recaptchaSecretKey },
+        { "response", LModel.RecaptchaToken }
+    };
 
             var content = new FormUrlEncodedContent(postData);
             var recaptchaResponse = await httpClient.PostAsync("https://www.google.com/recaptcha/api/siteverify", content);
@@ -91,17 +91,17 @@ namespace _234351A_Razor.Pages
             _logger.LogInformation("Google reCAPTCHA API Response: {Response}", jsonResponse);
 
             var recaptchaResult = JsonSerializer.Deserialize<RecaptchaResponse>(jsonResponse);
-            if (recaptchaResult == null || !recaptchaResult.success)
+            if (recaptchaResult == null || !recaptchaResult.success || recaptchaResult.score < 0.5)
             {
-                _logger.LogWarning("reCAPTCHA failed: {Errors}", recaptchaResult?.error_codes);
-                ModelState.AddModelError("", "Captcha verification failed.");
+                _logger.LogWarning("reCAPTCHA failed. Score: {Score}, Errors: {Errors}", recaptchaResult?.score, recaptchaResult?.error_codes);
+                ModelState.AddModelError("", "Captcha verification failed. Please try again.");
                 return Page();
             }
 
-            // Fix: Normalize email (case-insensitive login)
+            // Normalize email for case-insensitive login
             string normalizedEmail = LModel.Email.Trim().ToUpper();
 
-            // Fix: Find user using normalized email
+            // Find user using normalized email
             var user = await _userManager.Users.FirstOrDefaultAsync(u => u.NormalizedEmail == normalizedEmail);
             if (user == null)
             {
@@ -112,16 +112,41 @@ namespace _234351A_Razor.Pages
 
             _logger.LogInformation("User found in database: {Email}", user.Email);
 
-            // Fix: Debug password hashing
+            // Check if the user is locked out before checking the password
+            if (await _userManager.IsLockedOutAsync(user))
+            {
+                _logger.LogWarning("Account locked out: {Email}", normalizedEmail);
+                ModelState.AddModelError("", "Your account is locked due to multiple failed attempts. Try again later.");
+                return Page();
+            }
+
+            // Verify password
             bool passwordCheck = await _userManager.CheckPasswordAsync(user, LModel.Password);
             _logger.LogInformation("Password Check Result: {Result}", passwordCheck);
 
             if (!passwordCheck)
             {
                 _logger.LogWarning("Password mismatch for user: {Email}", normalizedEmail);
-                ModelState.AddModelError("", "Invalid login attempt.");
+
+                // Increment failed access attempts
+                await _userManager.AccessFailedAsync(user);
+
+                // Check if the user should be locked out
+                if (await _userManager.IsLockedOutAsync(user))
+                {
+                    _logger.LogWarning("Account locked due to too many failed attempts: {Email}", normalizedEmail);
+                    ModelState.AddModelError("", "Account locked due to multiple failed attempts. Try again later.");
+                }
+                else
+                {
+                    ModelState.AddModelError("", "Invalid login attempt.");
+                }
+
                 return Page();
             }
+
+            // Reset failed access count on successful login
+            await _userManager.ResetAccessFailedCountAsync(user);
 
             // Attempt login
             var result = await _signInManager.PasswordSignInAsync(user, LModel.Password, LModel.RememberMe, lockoutOnFailure: true);

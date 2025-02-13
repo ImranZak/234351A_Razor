@@ -26,10 +26,15 @@ builder.Services.AddIdentity<ApplicationUser, IdentityRole>(options =>
     options.Password.RequireUppercase = true;
     options.Password.RequireLowercase = true;
     options.Password.RequireNonAlphanumeric = true;
+
+    // Configure account lockout settings
+    options.Lockout.AllowedForNewUsers = true;
+    options.Lockout.MaxFailedAccessAttempts = 3; // Lock after 3 failed attempts
+    options.Lockout.DefaultLockoutTimeSpan = TimeSpan.FromMinutes(1); // Lock for 15 minutes
 })
-    .AddRoles<IdentityRole>() // Registers roles properly
-    .AddEntityFrameworkStores<AuthDbContext>()
-    .AddDefaultTokenProviders();
+.AddRoles<IdentityRole>()
+.AddEntityFrameworkStores<AuthDbContext>()
+.AddDefaultTokenProviders();
 
 //  Ensure Identity Services Are Registered
 builder.Services.AddScoped<UserManager<ApplicationUser>>();
