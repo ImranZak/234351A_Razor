@@ -139,6 +139,7 @@ namespace _234351A_Razor.Pages
             RModel.LastName = HttpUtility.HtmlEncode(RModel.LastName);
             RModel.BillingAddress = HttpUtility.HtmlEncode(RModel.BillingAddress);
             RModel.ShippingAddress = HttpUtility.HtmlEncode(RModel.ShippingAddress);
+            RModel.Email = HttpUtility.HtmlEncode(RModel.Email);
 
             // Encrypt credit card
             string encryptedCreditCard = _protector.Protect(RModel.CreditCard);

@@ -6,6 +6,7 @@ using _234351A_Razor.Models;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Logging;
+using System.Web;
 
 namespace _234351A_Razor.Pages
 {
@@ -59,6 +60,12 @@ namespace _234351A_Razor.Pages
                 user.CreditCard = "Error decrypting data";
             }
 
+            // Sanitize user details before displaying
+            user.FirstName = HttpUtility.HtmlEncode(user.FirstName);
+            user.LastName = HttpUtility.HtmlEncode(user.LastName);
+            user.BillingAddress = HttpUtility.HtmlEncode(user.BillingAddress);
+            user.ShippingAddress = HttpUtility.HtmlEncode(user.ShippingAddress);
+            
             CurrentUser = user;
             return Page();
         }

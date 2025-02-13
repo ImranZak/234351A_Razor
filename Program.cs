@@ -80,9 +80,7 @@ builder.Services.ConfigureApplicationCookie(options =>
 
 //  Add Razor Pages
 builder.Services.AddRazorPages(options =>
-{
-    options.Conventions.ConfigureFilter(new IgnoreAntiforgeryTokenAttribute());
-});
+{});
 builder.Services.AddDatabaseDeveloperPageExceptionFilter();
 
 var app = builder.Build();

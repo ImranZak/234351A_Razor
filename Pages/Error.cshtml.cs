@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Mvc.RazorPages;
 using Microsoft.AspNetCore.Diagnostics;
 using Microsoft.Extensions.Logging;
+using System.Web;
 
 namespace _234351A_Razor.Pages
 {
@@ -20,7 +21,7 @@ namespace _234351A_Razor.Pages
             var exceptionHandlerPathFeature = HttpContext.Features.Get<IExceptionHandlerPathFeature>();
             if (exceptionHandlerPathFeature != null)
             {
-                ErrorMessage = exceptionHandlerPathFeature.Error.Message;
+                ErrorMessage = HttpUtility.HtmlEncode(exceptionHandlerPathFeature.Error.Message); // Encode error message
                 _logger.LogError(exceptionHandlerPathFeature.Error, "An error occurred while processing the request.");
             }
         }

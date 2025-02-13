@@ -9,6 +9,7 @@
         <div class="col-lg-4">
             <h3>Are you sure you want to logout?</h3>
             <form method="post">
+                @Html.AntiForgeryToken()
                 <button type="submit" class="btn btn-danger">Logout</button>
                 <a class="btn btn-secondary" asp-page="/Index">Cancel</a>
             </form>

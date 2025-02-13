@@ -11,6 +11,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using System.Linq;
 using Microsoft.EntityFrameworkCore;
+using System.Web;
 
 namespace _234351A_Razor.Pages
 {
@@ -119,6 +120,9 @@ namespace _234351A_Razor.Pages
                 ModelState.AddModelError("", "Your account is locked due to multiple failed attempts. Try again later.");
                 return Page();
             }
+
+            // Encode email AFTER checking email
+            LModel.Email = HttpUtility.HtmlEncode(LModel.Email);
 
             // Verify password
             bool passwordCheck = await _userManager.CheckPasswordAsync(user, LModel.Password);

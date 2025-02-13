@@ -11,6 +11,7 @@
             <h1 class="mb-3">Register</h1>
 
             <form method="post" enctype="multipart/form-data" onsubmit="return validateRecaptcha();">
+                @Html.AntiForgeryToken()
                 <div asp-validation-summary="All" class="text-danger"></div>
 
                 <div class="mb-3">

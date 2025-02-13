@@ -6,6 +6,7 @@ using System.Text;
 using Microsoft.AspNetCore.WebUtilities;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
+using System.Web;
 
 namespace _234351A_Razor.Pages
 {
@@ -33,6 +34,9 @@ namespace _234351A_Razor.Pages
                 Message = "Invalid email confirmation link.";
                 return Page();
             }
+            // Encode inputs before displaying
+            userId = HttpUtility.HtmlEncode(userId);
+            token = HttpUtility.HtmlEncode(token);
 
             var user = await _userManager.FindByIdAsync(userId);
             if (user == null)
