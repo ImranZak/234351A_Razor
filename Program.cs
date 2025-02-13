@@ -3,8 +3,17 @@ using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.AspNetCore.DataProtection;
 using _234351A_Razor.Models;
+using Microsoft.AspNetCore.Mvc;
 
 var builder = WebApplication.CreateBuilder(args);
+
+// allows appsettings.Development.json to be loaded in Development mode
+builder.Configuration
+    .SetBasePath(Directory.GetCurrentDirectory())
+    .AddJsonFile("appsettings.json", optional: false, reloadOnChange: true)
+    .AddJsonFile($"appsettings.{builder.Environment.EnvironmentName}.json", optional: true, reloadOnChange: true)
+    .AddEnvironmentVariables();
+
 
 // Ensure database connection string is set
 var connectionString = builder.Configuration.GetConnectionString("AuthConnectionString");
@@ -29,8 +38,8 @@ builder.Services.AddIdentity<ApplicationUser, IdentityRole>(options =>
 
     // Configure account lockout settings
     options.Lockout.AllowedForNewUsers = true;
-    options.Lockout.MaxFailedAccessAttempts = 3; // Lock after 3 failed attempts
-    options.Lockout.DefaultLockoutTimeSpan = TimeSpan.FromMinutes(1); // Lock for 15 minutes
+    options.Lockout.MaxFailedAccessAttempts = 2; // Lock after 3 failed attempts
+    options.Lockout.DefaultLockoutTimeSpan = TimeSpan.FromMinutes(15); // Lock for 15 minutes
 })
 .AddRoles<IdentityRole>()
 .AddEntityFrameworkStores<AuthDbContext>()
@@ -51,7 +60,7 @@ builder.Services.AddSession(options =>
 
 //  Enable Data Protection for encrypting sensitive data
 builder.Services.AddDataProtection()
-    .PersistKeysToFileSystem(new DirectoryInfo(@"./keys"))
+    .PersistKeysToFileSystem(new DirectoryInfo(@"/keys"))
     .SetApplicationName("BookwormsOnline");
 
 //  Configure secure session management
@@ -68,7 +77,10 @@ builder.Services.ConfigureApplicationCookie(options =>
 });
 
 //  Add Razor Pages
-builder.Services.AddRazorPages();
+builder.Services.AddRazorPages(options =>
+{
+    options.Conventions.ConfigureFilter(new IgnoreAntiforgeryTokenAttribute());
+});
 builder.Services.AddDatabaseDeveloperPageExceptionFilter();
 
 var app = builder.Build();

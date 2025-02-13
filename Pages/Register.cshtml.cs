@@ -105,35 +105,45 @@ namespace _234351A_Razor.Pages
             string recaptchaSecretKey = _configuration["GoogleReCaptcha:SecretKey"];
             using var httpClient = new HttpClient();
             var postData = new Dictionary<string, string>
-            {
-                { "secret", recaptchaSecretKey },
-                { "response", RModel.RecaptchaToken }
-            };
+    {
+        { "secret", recaptchaSecretKey },
+        { "response", RModel.RecaptchaToken }
+    };
 
             var content = new FormUrlEncodedContent(postData);
             var recaptchaResponse = await httpClient.PostAsync("https://www.google.com/recaptcha/api/siteverify", content);
             var jsonResponse = await recaptchaResponse.Content.ReadAsStringAsync();
             var recaptchaResult = JsonSerializer.Deserialize<RecaptchaResponse>(jsonResponse);
 
-            if (recaptchaResult == null || !recaptchaResult.success)
+            if (recaptchaResult == null || !recaptchaResult.success || recaptchaResult.score < 0.5)
             {
+                _logger.LogWarning("reCAPTCHA failed. Score: {Score}, Errors: {Errors}", recaptchaResult?.score, recaptchaResult?.error_codes);
                 ModelState.AddModelError("", "Captcha verification failed. Please try again.");
                 return Page();
             }
 
+            // Clear reCAPTCHA token after use
+            RModel.RecaptchaToken = null;
+
+            // Check if email already exists
             var existingUser = await _userManager.FindByEmailAsync(RModel.Email);
             if (existingUser != null)
             {
+                _logger.LogWarning("Registration failed: Email already in use. Email: {Email}", RModel.Email);
                 ModelState.AddModelError("", "Email is already in use.");
                 return Page();
             }
 
+            // Sanitize input fields
             RModel.FirstName = HttpUtility.HtmlEncode(RModel.FirstName);
             RModel.LastName = HttpUtility.HtmlEncode(RModel.LastName);
             RModel.BillingAddress = HttpUtility.HtmlEncode(RModel.BillingAddress);
             RModel.ShippingAddress = HttpUtility.HtmlEncode(RModel.ShippingAddress);
+
+            // Encrypt credit card
             string encryptedCreditCard = _protector.Protect(RModel.CreditCard);
 
+            // Handle profile photo upload
             string photoPath = null;
             if (RModel.PhotoFile != null)
             {
@@ -157,27 +167,34 @@ namespace _234351A_Razor.Pages
                 BillingAddress = RModel.BillingAddress,
                 ShippingAddress = RModel.ShippingAddress,
                 PhotoPath = photoPath,
-                EmailConfirmed = false // Default to not confirmed
+                EmailConfirmed = false
             };
 
             var result = await _userManager.CreateAsync(user, RModel.Password);
 
             if (result.Succeeded)
             {
+                _logger.LogInformation("User registered successfully. Email: {Email}", user.Email ?? "NULL");
+
+                // Generate email confirmation token
                 var token = await _userManager.GenerateEmailConfirmationTokenAsync(user);
+                // Properly encode the token for safe URL transmission
                 var encodedToken = WebEncoders.Base64UrlEncode(Encoding.UTF8.GetBytes(token));
-                var confirmationLink = Url.Page("/ConfirmEmail",
-                                                pageHandler: null,
-                                                values: new { userId = user.Id, token = encodedToken },
-                                                protocol: Request.Scheme);
+                // Ensure userId and token are properly escaped for URL safety
+                var confirmationLink = $"{Request.Scheme}://{Request.Host}/ConfirmEmail?userId={Uri.EscapeDataString(user.Id)}&token={Uri.EscapeDataString(encodedToken)}";
+                // HTML-encode the link before inserting it in the email body
+                var encodedLink = HtmlEncoder.Default.Encode(confirmationLink);
 
-                SendEmail(user.Email, "Confirm Your Email", $"Click here to confirm your email: <a href='{HtmlEncoder.Default.Encode(confirmationLink)}'>Confirm Email</a>");
+                _logger.LogInformation("Generated Confirmation Link: {Link}", confirmationLink);
+                SendEmail(user.Email, "Confirm Your Email",
+                    $"Click here to confirm your email: <a href='{encodedLink}'>Confirm Email</a>");
 
-                return RedirectToPage("/CheckEmail");
+                return RedirectToPage("/Login", new { Message = "Registration successful! Please check your email for confirmation." });
             }
 
             foreach (var error in result.Errors)
             {
+                _logger.LogWarning("Registration failed: {Error}", error.Description);
                 ModelState.AddModelError("", error.Description);
             }
 
@@ -186,24 +203,42 @@ namespace _234351A_Razor.Pages
 
         private void SendEmail(string toEmail, string subject, string body)
         {
-            var smtpClient = new SmtpClient(_configuration["EmailSettings:SmtpServer"])
+            if (string.IsNullOrWhiteSpace(toEmail))
             {
-                Port = int.Parse(_configuration["EmailSettings:Port"]),
-                Credentials = new System.Net.NetworkCredential(
-                    _configuration["EmailSettings:Username"],
-                    _configuration["EmailSettings:Password"]),
-                EnableSsl = true,
-            };
+                _logger.LogError("Email sending failed: recipient email is null or empty.");
+                return; // Prevent sending to null or empty email
+            }
 
-            smtpClient.Send(new MailMessage
+            try
             {
-                From = new MailAddress(_configuration["EmailSettings:SenderEmail"]),
-                Subject = subject,
-                Body = body,
-                IsBodyHtml = true,
-                To = { toEmail }
-            });
+                var smtpClient = new SmtpClient(_configuration["EmailSettings:SmtpServer"])
+                {
+                    Port = int.Parse(_configuration["EmailSettings:Port"]),
+                    Credentials = new System.Net.NetworkCredential(
+                        _configuration["EmailSettings:Username"],
+                        _configuration["EmailSettings:Password"]),
+                    EnableSsl = true,
+                };
+
+                var mailMessage = new MailMessage
+                {
+                    From = new MailAddress(_configuration["EmailSettings:SenderEmail"]),
+                    Subject = subject,
+                    Body = body,
+                    IsBodyHtml = true
+                };
+
+                mailMessage.To.Add(toEmail);
+
+                smtpClient.Send(mailMessage);
+                _logger.LogInformation("Confirmation email sent successfully to {Email}", toEmail);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError("Error sending email: {ErrorMessage}", ex.Message);
+            }
         }
+
 
         public class RecaptchaResponse
         {

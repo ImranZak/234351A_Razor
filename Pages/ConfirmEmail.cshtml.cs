@@ -25,6 +25,8 @@ namespace _234351A_Razor.Pages
 
         public async Task<IActionResult> OnGetAsync(string userId, string token)
         {
+            _logger.LogInformation("Received Confirmation Request - UserID: {UserID}, Token: {Token}", userId, token);
+
             if (string.IsNullOrEmpty(userId) || string.IsNullOrEmpty(token))
             {
                 _logger.LogWarning("Invalid email confirmation request: Missing user ID or token.");
@@ -40,19 +42,30 @@ namespace _234351A_Razor.Pages
                 return Page();
             }
 
-            // Decode the token
-            var decodedToken = Encoding.UTF8.GetString(WebEncoders.Base64UrlDecode(token));
-            var result = await _userManager.ConfirmEmailAsync(user, decodedToken);
+            try
+            {
+                // Decode the token before confirming the email
+                var decodedTokenBytes = WebEncoders.Base64UrlDecode(token);
+                var decodedToken = Encoding.UTF8.GetString(decodedTokenBytes);
+                _logger.LogInformation("Decoded Token: {DecodedToken}", decodedToken);
 
-            if (result.Succeeded)
-            {
-                _logger.LogInformation("User {Email} confirmed their email successfully.", user.Email);
-                Message = "Email confirmed successfully. You can now log in.";
+                var result = await _userManager.ConfirmEmailAsync(user, decodedToken);
+
+                if (result.Succeeded)
+                {
+                    _logger.LogInformation("User {Email} confirmed their email successfully.", user.Email);
+                    Message = "Email confirmed successfully. You can now log in.";
+                }
+                else
+                {
+                    _logger.LogWarning("Email confirmation failed for user: {Email}", user.Email);
+                    Message = "Email confirmation failed. The link may have expired or is invalid.";
+                }
             }
-            else
+            catch (Exception ex)
             {
-                _logger.LogWarning("Email confirmation failed for user: {Email}", user.Email);
-                Message = "Email confirmation failed. The link may have expired or is invalid.";
+                _logger.LogError("Error decoding email confirmation token: {Error}", ex.Message);
+                Message = "Invalid email confirmation link.";
             }
 
             return Page();
