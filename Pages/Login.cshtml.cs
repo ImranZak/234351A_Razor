@@ -12,6 +12,8 @@ using Microsoft.Extensions.Logging;
 using System.Linq;
 using Microsoft.EntityFrameworkCore;
 using System.Web;
+using System;
+using _234351A_Razor.Data;
 
 namespace _234351A_Razor.Pages
 {
@@ -21,16 +23,19 @@ namespace _234351A_Razor.Pages
         private readonly UserManager<ApplicationUser> _userManager;
         private readonly IConfiguration _configuration;
         private readonly ILogger<LoginModel> _logger;
+        private readonly AuthDbContext _context;
 
         public LoginModel(SignInManager<ApplicationUser> signInManager,
                           UserManager<ApplicationUser> userManager,
                           IConfiguration configuration,
-                          ILogger<LoginModel> logger)
+                          ILogger<LoginModel> logger,
+                          AuthDbContext context)
         {
             _signInManager = signInManager;
             _userManager = userManager;
             _configuration = configuration;
             _logger = logger;
+            _context = context;
         }
 
         [BindProperty]
@@ -80,10 +85,10 @@ namespace _234351A_Razor.Pages
 
             using var httpClient = new HttpClient();
             var postData = new Dictionary<string, string>
-    {
-        { "secret", recaptchaSecretKey },
-        { "response", LModel.RecaptchaToken }
-    };
+            {
+                { "secret", recaptchaSecretKey },
+                { "response", LModel.RecaptchaToken }
+            };
 
             var content = new FormUrlEncodedContent(postData);
             var recaptchaResponse = await httpClient.PostAsync("https://www.google.com/recaptcha/api/siteverify", content);
@@ -108,6 +113,10 @@ namespace _234351A_Razor.Pages
             {
                 _logger.LogWarning("Login failed: User not found. Email: {Email}", normalizedEmail);
                 ModelState.AddModelError("", "Invalid login attempt.");
+
+                // Log failed login attempt
+                await LogAuditEvent(normalizedEmail, "Login Failed");
+
                 return Page();
             }
 
@@ -118,6 +127,10 @@ namespace _234351A_Razor.Pages
             {
                 _logger.LogWarning("Account locked out: {Email}", normalizedEmail);
                 ModelState.AddModelError("", "Your account is locked due to multiple failed attempts. Try again later.");
+
+                // Log account lockout
+                await LogAuditEvent(user.Email, "Account Locked Out");
+
                 return Page();
             }
 
@@ -135,10 +148,17 @@ namespace _234351A_Razor.Pages
                 {
                     _logger.LogWarning("Account locked due to too many failed attempts: {Email}", normalizedEmail);
                     ModelState.AddModelError("", "Account locked due to multiple failed attempts. Try again later.");
+
+                    // Log account lockout
+                    await LogAuditEvent(user.Email, "Account Locked Out");
+
                 }
                 else
                 {
                     ModelState.AddModelError("", "Invalid login attempt.");
+
+                    // Log failed password attempt
+                    await LogAuditEvent(user.Email, "Login Failed - Incorrect Password");
                 }
 
                 return Page();
@@ -146,6 +166,9 @@ namespace _234351A_Razor.Pages
 
             // Reset failed access count on successful login
             await _userManager.ResetAccessFailedCountAsync(user);
+
+            // Log successful login attempt
+            await LogAuditEvent(user.Email, "Login Success");
 
             // Ensure session fixation prevention
             HttpContext.Session.Clear();
@@ -169,14 +192,37 @@ namespace _234351A_Razor.Pages
             {
                 _logger.LogWarning("Account locked: {Email}", normalizedEmail);
                 ModelState.AddModelError("", "Account locked due to multiple failed attempts. Try again later.");
+
+                // Log account lockout
+                await LogAuditEvent(user.Email, "Account Locked Out");
+
                 return Page();
             }
             else
             {
                 _logger.LogWarning("Invalid login attempt for user: {Email}", normalizedEmail);
                 ModelState.AddModelError("", "Invalid login attempt.");
+
+                // Log failed login attempt
+                await LogAuditEvent(user.Email, "Login Failed");
+
                 return Page();
             }
+        }
+
+        // Audit Logging Method
+        private async Task LogAuditEvent(string userEmail, string action)
+        {
+            var logEntry = new AuditLog
+            {
+                UserEmail = userEmail,
+                Action = action,
+                Timestamp = DateTime.UtcNow,
+                IPAddress = HttpContext.Connection.RemoteIpAddress?.ToString() ?? "Unknown"
+            };
+
+            _context.AuditLogs.Add(logEntry);
+            await _context.SaveChangesAsync();
         }
 
         public class RecaptchaResponse

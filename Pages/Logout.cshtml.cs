@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Mvc.RazorPages;
 using System.Threading.Tasks;
 using _234351A_Razor.Models;
 using Microsoft.Extensions.Logging;
+using _234351A_Razor.Data;
 
 namespace _234351A_Razor.Pages
 {
@@ -29,15 +30,34 @@ namespace _234351A_Razor.Pages
             {
                 user.SecurityStamp = Guid.NewGuid().ToString(); // Invalidate session
                 await _userManager.UpdateAsync(user);
+
+                // Log logout event
+                await LogAuditEvent(user.Email, "User Logged Out");
             }
 
-            _logger.LogInformation("User logged out: {Email}", user?.Email);
-
             await _signInManager.SignOutAsync();
-            HttpContext.Session.Clear(); // Destroy session data
-            Response.Cookies.Delete(".AspNetCore.Session"); // Ensure session cookie is deleted
+            HttpContext.Session.Clear();
+            Response.Cookies.Delete(".AspNetCore.Session");
 
             return RedirectToPage("/Login", new { Message = "You have been logged out." });
         }
+
+        // Audit Logging Method
+        private async Task LogAuditEvent(string userEmail, string action)
+        {
+            var logEntry = new AuditLog
+            {
+                UserEmail = userEmail,
+                Action = action,
+                IPAddress = HttpContext.Connection.RemoteIpAddress?.ToString() ?? "Unknown"
+            };
+
+            using (var _context = HttpContext.RequestServices.GetService<AuthDbContext>())
+            {
+                _context.AuditLogs.Add(logEntry);
+                await _context.SaveChangesAsync();
+            }
+        }
+
     }
 }

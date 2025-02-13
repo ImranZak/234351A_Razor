@@ -7,6 +7,8 @@ using System.Threading.Tasks;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Logging;
 using System.Web;
+using System;
+using _234351A_Razor.Data;
 
 namespace _234351A_Razor.Pages
 {
@@ -16,16 +18,19 @@ namespace _234351A_Razor.Pages
         private readonly UserManager<ApplicationUser> _userManager;
         private readonly SignInManager<ApplicationUser> _signInManager;
         private readonly IDataProtector _protector;
+        private readonly AuthDbContext _context;
 
         public IndexModel(ILogger<IndexModel> logger,
                           UserManager<ApplicationUser> userManager,
                           SignInManager<ApplicationUser> signInManager,
-                          IDataProtectionProvider provider)
+                          IDataProtectionProvider provider,
+                          AuthDbContext context)
         {
             _logger = logger;
             _userManager = userManager;
             _signInManager = signInManager;
             _protector = provider.CreateProtector("CreditCardProtector");
+            _context = context;
         }
 
         public ApplicationUser CurrentUser { get; set; }
@@ -43,9 +48,14 @@ namespace _234351A_Razor.Pages
             if (string.IsNullOrEmpty(storedToken) || storedToken != user.SecurityStamp)
             {
                 _logger.LogWarning("Invalid session detected for user: {Email}", user.Email);
+
+                // Log session expiry event
+                await LogAuditEvent(user.Email, "Session Expired");
+
                 await _signInManager.SignOutAsync();
                 HttpContext.Session.Clear();
                 Response.Cookies.Delete(".AspNetCore.Session");
+
                 return RedirectToPage("/Login", new { Message = "Session expired or invalid. Please log in again." });
             }
 
@@ -65,9 +75,24 @@ namespace _234351A_Razor.Pages
             user.LastName = HttpUtility.HtmlEncode(user.LastName);
             user.BillingAddress = HttpUtility.HtmlEncode(user.BillingAddress);
             user.ShippingAddress = HttpUtility.HtmlEncode(user.ShippingAddress);
-            
+
             CurrentUser = user;
             return Page();
+        }
+
+        // Audit Logging Method
+        private async Task LogAuditEvent(string userEmail, string action)
+        {
+            var logEntry = new AuditLog
+            {
+                UserEmail = userEmail,
+                Action = action,
+                Timestamp = DateTime.UtcNow,
+                IPAddress = HttpContext.Connection.RemoteIpAddress?.ToString() ?? "Unknown"
+            };
+
+            _context.AuditLogs.Add(logEntry);
+            await _context.SaveChangesAsync();
         }
     }
 }

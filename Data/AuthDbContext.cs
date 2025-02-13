@@ -12,6 +12,7 @@ namespace _234351A_Razor.Data
         {
         }
         public AuthDbContext() { }
+        public DbSet<AuditLog> AuditLogs { get; set; } // Ensure this line is present
 
         protected override void OnModelCreating(ModelBuilder builder)
         {
@@ -25,6 +26,7 @@ namespace _234351A_Razor.Data
             builder.Entity<IdentityUserLogin<string>>().ToTable("UserLogins");
             builder.Entity<IdentityRoleClaim<string>>().ToTable("RoleClaims");
             builder.Entity<IdentityUserToken<string>>().ToTable("UserTokens");
+            builder.Entity<AuditLog>().ToTable("AuditLogs"); 
         }
     }
 }
