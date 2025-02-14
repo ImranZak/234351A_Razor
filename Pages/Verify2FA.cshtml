@@ -1,0 +1,26 @@
+﻿@page
+@model _234351A_Razor.Pages.Verify2FAModel
+@{
+    ViewData["Title"] = "Verify 2FA";
+}
+
+<h2>Enter the 2FA code sent to your email</h2>
+
+@if (!string.IsNullOrEmpty(ViewData["ErrorMessage"] as string))
+{
+    <div class="alert alert-danger">@ViewData["ErrorMessage"]</div>
+}
+
+@if (!string.IsNullOrEmpty(ViewData["SuccessMessage"] as string))
+{
+    <div class="alert alert-success">@ViewData["SuccessMessage"]</div>
+}
+
+<form method="post">
+    <input type="hidden" name="userId" value="@ViewData["UserId"]" /> <!-- Ensure userId is passed -->
+    <div class="form-group">
+        <label for="Code">2FA Code</label>
+        <input type="text" id="Code" name="Code" class="form-control" required>
+    </div>
+    <button type="submit" class="btn btn-primary mt-2">Verify</button>
+</form>

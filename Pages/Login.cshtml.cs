@@ -88,10 +88,10 @@ namespace _234351A_Razor.Pages
 
             using var httpClient = new HttpClient();
             var postData = new Dictionary<string, string>
-            {
-                { "secret", recaptchaSecretKey },
-                { "response", LModel.RecaptchaToken }
-            };
+    {
+        { "secret", recaptchaSecretKey },
+        { "response", LModel.RecaptchaToken }
+    };
 
             var content = new FormUrlEncodedContent(postData);
             var recaptchaResponse = await httpClient.PostAsync("https://www.google.com/recaptcha/api/siteverify", content);
@@ -187,12 +187,18 @@ namespace _234351A_Razor.Pages
                 // Generate the 2FA token and send it via email
                 var token = await _userManager.GenerateTwoFactorTokenAsync(user, "Email");
 
-                // Send token via email
-                var emailBody = $"Your 2FA code is: {token}";
-                await SendEmail(user.Email, "Your 2FA Code", emailBody);
+                try
+                {
+                    await SendEmail(user.Email, "Your 2FA Code", $"Your 2FA code is: {token}");
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError("Failed to send 2FA email. Error: {ErrorMessage}", ex.Message);
+                    ModelState.AddModelError("", "Unable to send 2FA email. Please try again later or contact support.");
+                    return Page(); // Stay on login page with error message
+                }
 
-                // Redirect user to a page to enter the 2FA code
-                return RedirectToPage("/Account/Verify2FA", new { userId = user.Id });
+                return RedirectToPage("/Verify2FA", new { userId = user.Id });
             }
 
             // Proceed with normal login if 2FA is not enabled
@@ -218,6 +224,7 @@ namespace _234351A_Razor.Pages
             }
         }
 
+
         // Audit Logging Method
         private async Task LogAuditEvent(string userEmail, string action)
         {
@@ -235,23 +242,76 @@ namespace _234351A_Razor.Pages
 
         private async Task SendEmail(string toEmail, string subject, string body)
         {
-            var smtpClient = new SmtpClient(_configuration["EmailSettings:SmtpServer"])
+            if (string.IsNullOrWhiteSpace(toEmail))
             {
-                Port = int.Parse(_configuration["EmailSettings:Port"]),
-                Credentials = new NetworkCredential(_configuration["EmailSettings:Username"], _configuration["EmailSettings:Password"]),
-                EnableSsl = true,
-            };
+                _logger.LogError("Email sending failed: recipient email is null or empty.");
+                return;
+            }
 
-            var mailMessage = new MailMessage
+            try
             {
-                From = new MailAddress(_configuration["EmailSettings:SenderEmail"]),
-                Subject = subject,
-                Body = body,
-                IsBodyHtml = true
-            };
-            mailMessage.To.Add(toEmail);
-            smtpClient.Send(mailMessage);
+                _logger.LogInformation("SMTP Settings: Server={Server}, Port={Port}, Username={Username}",
+                    _configuration["EmailSettings:SmtpServer"],
+                    _configuration["EmailSettings:Port"],
+                    _configuration["EmailSettings:Username"]);
+
+                // First attempt with port 587 (STARTTLS)
+                await TrySendEmail(toEmail, subject, body, 587, enableSsl: false, useStartTls: true);
+            }
+            catch (Exception ex1)
+            {
+                _logger.LogWarning("Failed to send email using port 587. Retrying with port 465... Error: {ErrorMessage}", ex1.Message);
+
+                try
+                {
+                    // Second attempt with port 465 (SSL)
+                    await TrySendEmail(toEmail, subject, body, 465, enableSsl: true, useStartTls: false);
+                }
+                catch (Exception ex2)
+                {
+                    _logger.LogError("Email sending failed on both ports 587 and 465. Error: {ErrorMessage}", ex2.Message);
+                    throw new Exception("Email sending failed. Please check your SMTP settings or use an alternative method.");
+                }
+            }
         }
+
+
+
+        private async Task TrySendEmail(string toEmail, string subject, string body, int port, bool enableSsl, bool useStartTls)
+        {
+            using (var smtpClient = new SmtpClient(_configuration["EmailSettings:SmtpServer"], port))
+            {
+                smtpClient.Credentials = new NetworkCredential(
+                    _configuration["EmailSettings:Username"],
+                    _configuration["EmailSettings:Password"]);
+
+                smtpClient.EnableSsl = enableSsl; // Required for port 465
+                smtpClient.DeliveryMethod = SmtpDeliveryMethod.Network;
+                smtpClient.UseDefaultCredentials = false;
+
+                if (useStartTls)
+                {
+                    smtpClient.EnableSsl = false; // Must be false for STARTTLS to work
+                    smtpClient.TargetName = "STARTTLS/smtp.gmail.com"; // Required for STARTTLS
+                }
+
+                var mailMessage = new MailMessage
+                {
+                    From = new MailAddress(_configuration["EmailSettings:SenderEmail"]),
+                    Subject = subject,
+                    Body = body,
+                    IsBodyHtml = true
+                };
+                mailMessage.To.Add(toEmail);
+
+                _logger.LogInformation("Attempting to send email via SMTP Server={Server}, Port={Port}, Using STARTTLS={StartTls}, Using SSL={SSL}",
+                    _configuration["EmailSettings:SmtpServer"], port, useStartTls, enableSsl);
+
+                await smtpClient.SendMailAsync(mailMessage);
+            }
+        }
+
+
 
         public class RecaptchaResponse
         {

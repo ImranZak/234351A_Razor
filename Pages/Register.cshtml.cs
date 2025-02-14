@@ -85,6 +85,7 @@ namespace _234351A_Razor.Pages
             public string? RecaptchaToken { get; set; }
             public IFormFile PhotoFile { get; set; }
         }
+
         [ValidateAntiForgeryToken]
         public async Task<IActionResult> OnPostAsync()
         {
@@ -105,10 +106,10 @@ namespace _234351A_Razor.Pages
             string recaptchaSecretKey = _configuration["GoogleReCaptcha:SecretKey"];
             using var httpClient = new HttpClient();
             var postData = new Dictionary<string, string>
-    {
-        { "secret", recaptchaSecretKey },
-        { "response", RModel.RecaptchaToken }
-    };
+        {
+            { "secret", recaptchaSecretKey },
+            { "response", RModel.RecaptchaToken }
+        };
 
             var content = new FormUrlEncodedContent(postData);
             var recaptchaResponse = await httpClient.PostAsync("https://www.google.com/recaptcha/api/siteverify", content);
@@ -177,6 +178,9 @@ namespace _234351A_Razor.Pages
             {
                 _logger.LogInformation("User registered successfully. Email: {Email}", user.Email ?? "NULL");
 
+                // Enable 2FA by default for all new users
+                await _userManager.SetTwoFactorEnabledAsync(user, true);
+
                 // Generate email confirmation token
                 var token = await _userManager.GenerateEmailConfirmationTokenAsync(user);
                 // Properly encode the token for safe URL transmission
@@ -186,7 +190,7 @@ namespace _234351A_Razor.Pages
                 // HTML-encode the link before inserting it in the email body
                 var encodedLink = HtmlEncoder.Default.Encode(confirmationLink);
 
-                SendEmail(user.Email, "Confirm Your Email", 
+                SendEmail(user.Email, "Confirm Your Email",
                     $"Click here to confirm your email: <a href='{encodedLink}'>Confirm Email</a>");
 
                 return RedirectToPage("/Login", new { Message = "Registration successful! Please check your email for confirmation." });
@@ -201,43 +205,66 @@ namespace _234351A_Razor.Pages
             return Page();
         }
 
-        private void SendEmail(string toEmail, string subject, string body)
+        private async Task SendEmail(string toEmail, string subject, string body)
         {
             if (string.IsNullOrWhiteSpace(toEmail))
             {
                 _logger.LogError("Email sending failed: recipient email is null or empty.");
-                return; // Prevent sending to null or empty email
+                return;
             }
 
             try
             {
-                var smtpClient = new SmtpClient(_configuration["EmailSettings:SmtpServer"])
-                {
-                    Port = int.Parse(_configuration["EmailSettings:Port"]),
-                    Credentials = new System.Net.NetworkCredential(
-                        _configuration["EmailSettings:Username"],
-                        _configuration["EmailSettings:Password"]),
-                    EnableSsl = true,
-                };
-
-                var mailMessage = new MailMessage
-                {
-                    From = new MailAddress(_configuration["EmailSettings:SenderEmail"]),
-                    Subject = subject,
-                    Body = body,
-                    IsBodyHtml = true
-                };
-
-                mailMessage.To.Add(toEmail);
-
-                smtpClient.Send(mailMessage);
-                _logger.LogInformation("Confirmation email sent successfully to {Email}", toEmail);
+                await TrySendEmail(toEmail, subject, body, 587, enableSsl: false, useStartTls: true); // Try port 587 (TLS)
             }
-            catch (Exception ex)
+            catch (Exception ex1)
             {
-                _logger.LogError("Error sending email: {ErrorMessage}", ex.Message);
+                _logger.LogWarning("Failed to send email using port 587. Retrying with port 465... Error: {ErrorMessage}", ex1.Message);
+
+                try
+                {
+                    await TrySendEmail(toEmail, subject, body, 465, enableSsl: true, useStartTls: false); // Try port 465 (SSL)
+                }
+                catch (Exception ex2)
+                {
+                    _logger.LogError("Email sending failed on both ports 587 and 465. Error: {ErrorMessage}", ex2.Message);
+                    throw new Exception("Email sending failed. Please check your SMTP settings or use an alternative method.");
+                }
             }
         }
+
+        private async Task TrySendEmail(string toEmail, string subject, string body, int port, bool enableSsl, bool useStartTls)
+        {
+            using var smtpClient = new SmtpClient(_configuration["EmailSettings:SmtpServer"], port)
+            {
+                Credentials = new System.Net.NetworkCredential(
+                    _configuration["EmailSettings:Username"],
+                    _configuration["EmailSettings:Password"]),
+                EnableSsl = enableSsl, // Enable SSL if using port 465
+                UseDefaultCredentials = false
+            };
+
+            if (useStartTls)
+            {
+                smtpClient.EnableSsl = false;
+                smtpClient.DeliveryMethod = SmtpDeliveryMethod.Network;
+                smtpClient.UseDefaultCredentials = false;
+            }
+
+            var mailMessage = new MailMessage
+            {
+                From = new MailAddress(_configuration["EmailSettings:SenderEmail"]),
+                Subject = subject,
+                Body = body,
+                IsBodyHtml = true
+            };
+
+            mailMessage.To.Add(toEmail);
+
+            await smtpClient.SendMailAsync(mailMessage);
+            _logger.LogInformation("Email successfully sent to {Email} using port {Port}", toEmail, port);
+        }
+
 
 
         public class RecaptchaResponse
