@@ -189,7 +189,8 @@ namespace _234351A_Razor.Pages
 
                 try
                 {
-                    await SendEmail(user.Email, "Your 2FA Code", $"Your 2FA code is: {token}");
+                    Console.WriteLine($"[DEBUG] 2FA Code for {user.Email}: {token}");
+                    _logger.LogInformation("2FA Code for {Email}: {Code}", user.Email, token);
                 }
                 catch (Exception ex)
                 {
@@ -198,7 +199,9 @@ namespace _234351A_Razor.Pages
                     return Page(); // Stay on login page with error message
                 }
 
-                return RedirectToPage("/Verify2FA", new { userId = user.Id });
+                HttpContext.Session.SetString("UserId", user.Id);
+                return RedirectToPage("/Verify2FA");
+
             }
 
             // Proceed with normal login if 2FA is not enabled

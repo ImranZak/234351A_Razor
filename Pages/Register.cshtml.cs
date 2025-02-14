@@ -190,8 +190,9 @@ namespace _234351A_Razor.Pages
                 // HTML-encode the link before inserting it in the email body
                 var encodedLink = HtmlEncoder.Default.Encode(confirmationLink);
 
-                SendEmail(user.Email, "Confirm Your Email",
-                    $"Click here to confirm your email: <a href='{encodedLink}'>Confirm Email</a>");
+                Console.WriteLine($"[DEBUG] Confirmation link for {user.Email}: {confirmationLink}");
+                _logger.LogInformation("Confirmation link for {Email}: {Link}", user.Email, confirmationLink);
+
 
                 return RedirectToPage("/Login", new { Message = "Registration successful! Please check your email for confirmation." });
             }
