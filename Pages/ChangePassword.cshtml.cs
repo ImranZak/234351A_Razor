@@ -9,6 +9,7 @@ using System;
 using _234351A_Razor.Data;
 using System.ComponentModel.DataAnnotations;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.AspNetCore.Authentication;
 
 namespace _234351A_Razor.Pages
 {
@@ -19,8 +20,8 @@ namespace _234351A_Razor.Pages
         private readonly AuthDbContext _context;
         private readonly ILogger<ChangePasswordModel> _logger;
 
-        private const int MaxPasswordAgeMinutes = 30; // Users MUST change password after 30 mins
-        private const int MinPasswordChangeIntervalMinutes = 5; // Cannot change password again within 5 mins
+        private const int MaxPasswordAgeMinutes = 30; // Force password change after 30 mins
+        private const int MinPasswordChangeIntervalMinutes = 1; // Allow immediate retry after failed attempt
 
         public ChangePasswordModel(UserManager<ApplicationUser> userManager,
                                    SignInManager<ApplicationUser> signInManager,
@@ -67,7 +68,7 @@ namespace _234351A_Razor.Pages
             {
                 _logger.LogWarning("ModelState is invalid. Errors: {Errors}",
                     string.Join(", ", ModelState.Values.SelectMany(v => v.Errors).Select(e => e.ErrorMessage)));
-                return Page(); // ❌ Do NOT redirect, stay on page
+                return Page(); // Stay on the page to show validation errors
             }
 
             var user = await _userManager.GetUserAsync(User);
@@ -85,14 +86,7 @@ namespace _234351A_Razor.Pages
             {
                 ModelState.AddModelError("", $"You must wait at least {MinPasswordChangeIntervalMinutes} minutes before changing your password again.");
                 _logger.LogWarning("User {UserEmail} attempted to change password too soon.", user.Email);
-                return Page(); // ❌ Stay on page, show error
-            }
-
-            // 🚀 Force Password Change if Expired
-            if ((DateTime.UtcNow - lastPasswordChange).TotalMinutes > MaxPasswordAgeMinutes)
-            {
-                TempData["ForcePasswordChange"] = "Your password has expired. Please change it now.";
-                return RedirectToPage("/ChangePassword");
+                return Page();
             }
 
             // 🚀 Verify Current Password
@@ -101,7 +95,7 @@ namespace _234351A_Razor.Pages
             {
                 ModelState.AddModelError("", "Current password is incorrect.");
                 _logger.LogWarning("Invalid current password for user {UserEmail}", user.Email);
-                return Page(); // ❌ Stay on page, show error
+                return Page();
             }
 
             // 🚀 Prevent Password Reuse (Check last 2 passwords)
@@ -111,15 +105,20 @@ namespace _234351A_Razor.Pages
                 .Take(2) // Check last 2 passwords
                 .ToListAsync();
 
-            if (previousPasswords.Any(p => _userManager.PasswordHasher.VerifyHashedPassword(user, p.HashedPassword, CModel.NewPassword) == PasswordVerificationResult.Success))
+            foreach (var oldPassword in previousPasswords)
             {
-                ModelState.AddModelError("", "You cannot reuse your last 2 passwords.");
-                _logger.LogWarning("User {UserEmail} attempted to reuse an old password", user.Email);
-                return Page(); // ❌ Stay on page, show error
+                var result = _userManager.PasswordHasher.VerifyHashedPassword(user, oldPassword.HashedPassword, CModel.NewPassword);
+                if (result == PasswordVerificationResult.Success)
+                {
+                    ModelState.AddModelError("", "You cannot reuse your last 2 passwords.");
+                    _logger.LogWarning("User {UserEmail} attempted to reuse an old password", user.Email);
+                    return Page();
+                }
             }
 
             _logger.LogInformation("Updating password for user {UserEmail}", user.Email);
 
+            // 🚀 Change the Password
             var changeResult = await _userManager.ChangePasswordAsync(user, CModel.CurrentPassword, CModel.NewPassword);
             if (!changeResult.Succeeded)
             {
@@ -128,7 +127,7 @@ namespace _234351A_Razor.Pages
                     ModelState.AddModelError("", error.Description);
                     _logger.LogWarning("Password change failed for user {UserEmail}: {Error}", user.Email, error.Description);
                 }
-                return Page(); // ❌ Stay on page, show error
+                return Page();
             }
 
             _logger.LogInformation("Password changed successfully for user {UserEmail}", user.Email);
@@ -143,20 +142,24 @@ namespace _234351A_Razor.Pages
 
             if (previousPasswords.Count >= 2)
             {
-                _context.PasswordHistories.Remove(previousPasswords.Last());
+                _context.PasswordHistories.Remove(previousPasswords.Last()); // Keep only the last 2 passwords
             }
 
-            await _context.SaveChangesAsync();
+            // 🚀 Update Security Stamp to force re-authentication
+            await _userManager.UpdateSecurityStampAsync(user);
 
-            // 🚀 Update Password Change Date
+            // 🚀 Ensure password change time is updated
             user.PasswordChangedAt = DateTime.UtcNow;
             await _userManager.UpdateAsync(user);
+            await _context.SaveChangesAsync();
 
-            // 🚀 Show success message BEFORE logout
+            // 🚀 Logout the user after password change
             TempData["SuccessMessage"] = "Password changed successfully! Please log in again.";
-
             await _signInManager.SignOutAsync();
+            HttpContext.SignOutAsync();
+
             return RedirectToPage("/Login");
         }
+
     }
 }
