@@ -7,13 +7,12 @@ using Microsoft.AspNetCore.Mvc;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// allows appsettings.Development.json to be loaded in Development mode
+// Load configurations
 builder.Configuration
     .SetBasePath(Directory.GetCurrentDirectory())
     .AddJsonFile("appsettings.json", optional: false, reloadOnChange: true)
     .AddJsonFile($"appsettings.{builder.Environment.EnvironmentName}.json", optional: true, reloadOnChange: true)
     .AddEnvironmentVariables();
-
 
 // Ensure database connection string is set
 var connectionString = builder.Configuration.GetConnectionString("AuthConnectionString");
@@ -26,7 +25,7 @@ if (string.IsNullOrEmpty(connectionString))
 builder.Services.AddDbContext<AuthDbContext>(options =>
     options.UseSqlServer(connectionString));
 
-//  Register Identity Services Properly
+// Register Identity Services
 builder.Services.AddIdentity<ApplicationUser, IdentityRole>(options =>
 {
     options.SignIn.RequireConfirmedAccount = true;
@@ -36,17 +35,14 @@ builder.Services.AddIdentity<ApplicationUser, IdentityRole>(options =>
     options.Password.RequireLowercase = true;
     options.Password.RequireNonAlphanumeric = true;
     options.Password.RequiredUniqueChars = 2;
-    options.Password.RequiredLength = 12;
     options.Lockout.MaxFailedAccessAttempts = 3;
-    options.Lockout.DefaultLockoutTimeSpan = TimeSpan.FromMinutes(30); // Minimum time before password change
+    options.Lockout.DefaultLockoutTimeSpan = TimeSpan.FromMinutes(30);
 })
 .AddRoles<IdentityRole>()
 .AddEntityFrameworkStores<AuthDbContext>()
 .AddDefaultTokenProviders();
 
-
-
-//  Ensure Identity Services Are Registered
+// Ensure Identity Services Are Registered
 builder.Services.AddScoped<UserManager<ApplicationUser>>();
 builder.Services.AddScoped<RoleManager<IdentityRole>>();
 builder.Services.AddScoped<SignInManager<ApplicationUser>>();
@@ -54,19 +50,19 @@ builder.Services.AddScoped<SignInManager<ApplicationUser>>();
 // Secure session settings
 builder.Services.AddSession(options =>
 {
-    options.IdleTimeout = TimeSpan.FromMinutes(20); // Auto logout after 20 minutes of inactivity
-    options.Cookie.HttpOnly = true; // Prevent JavaScript access to session
+    options.IdleTimeout = TimeSpan.FromMinutes(20);
+    options.Cookie.HttpOnly = true;
     options.Cookie.IsEssential = true;
-    options.Cookie.SecurePolicy = CookieSecurePolicy.Always; // Always send session cookie over HTTPS
-    options.Cookie.SameSite = SameSiteMode.Strict; // Prevent CSRF attacks
+    options.Cookie.SecurePolicy = CookieSecurePolicy.Always;
+    options.Cookie.SameSite = SameSiteMode.Strict;
 });
 
-//  Enable Data Protection for encrypting sensitive data
+// Enable Data Protection for encrypting sensitive data
 builder.Services.AddDataProtection()
     .PersistKeysToFileSystem(new DirectoryInfo(@"/keys"))
     .SetApplicationName("BookwormsOnline");
 
-//  Configure secure session management
+// Configure secure session management
 builder.Services.ConfigureApplicationCookie(options =>
 {
     options.LoginPath = "/Login";
@@ -76,27 +72,38 @@ builder.Services.ConfigureApplicationCookie(options =>
     options.SlidingExpiration = true;
     options.Cookie.HttpOnly = true;
     options.Cookie.SecurePolicy = CookieSecurePolicy.Always;
-    options.Cookie.SameSite = SameSiteMode.Lax;
+    options.Cookie.SameSite = SameSiteMode.Strict;
 });
 
-//  Add Razor Pages
-builder.Services.AddRazorPages(options =>
-{});
+//  Fix: Extend 2FA Token Expiry to 5 Minutes
+builder.Services.Configure<DataProtectionTokenProviderOptions>(options =>
+{
+    options.TokenLifespan = TimeSpan.FromMinutes(5);
+});
+
+//  Fix: Ensure "Email" is Used as 2FA Provider
+builder.Services.Configure<IdentityOptions>(options =>
+{
+    options.Tokens.ProviderMap["Email"] = new TokenProviderDescriptor(typeof(DataProtectorTokenProvider<ApplicationUser>));
+});
+
+// Add Razor Pages
+builder.Services.AddRazorPages();
 builder.Services.AddDatabaseDeveloperPageExceptionFilter();
 
 var app = builder.Build();
 
-// Apply database migrations & seed roles properly (NO `await` inside `Main()`)
+// Apply database migrations & seed roles properly
 using (var scope = app.Services.CreateScope())
 {
     var services = scope.ServiceProvider;
     var roleManager = services.GetRequiredService<RoleManager<IdentityRole>>();
     var userManager = services.GetRequiredService<UserManager<ApplicationUser>>();
 
-    await SeedRolesAndAdmin(roleManager, userManager);
+    SeedRolesAndAdmin(roleManager, userManager).GetAwaiter().GetResult();
 }
 
-async Task SeedRolesAndAdmin(RoleManager<IdentityRole> roleManager, UserManager<ApplicationUser> userManager)
+static async Task SeedRolesAndAdmin(RoleManager<IdentityRole> roleManager, UserManager<ApplicationUser> userManager)
 {
     string[] roleNames = { "Admin", "Member" };
     foreach (var roleName in roleNames)
@@ -107,8 +114,17 @@ async Task SeedRolesAndAdmin(RoleManager<IdentityRole> roleManager, UserManager<
         }
     }
 }
+// Handle specific status codes dynamically (403, 404, etc.)
+app.UseStatusCodePagesWithReExecute("/Error/{0}");
 
-//  Configure HTTP request pipeline
+if (!app.Environment.IsDevelopment())
+{
+    // Handle unhandled server-side errors (500, etc.)
+    app.UseExceptionHandler("/Error/500");
+    app.UseHsts();
+}
+
+// Configure HTTP request pipeline
 if (app.Environment.IsDevelopment())
 {
     app.UseMigrationsEndPoint();
@@ -117,16 +133,20 @@ else
 {
     app.UseExceptionHandler("/Error");
 
-    //  FIX: Allow reCAPTCHA through Content Security Policy (CSP)
+    // Hardened Security Headers (CSP & others)
     app.Use(async (context, next) =>
     {
         context.Response.Headers.Append("Content-Security-Policy",
             "frame-ancestors 'self' https://www.google.com; " +
-            "script-src 'self' https://www.google.com https://www.gstatic.com; " +
+            "script-src 'self' https://www.google.com https://www.gstatic.com 'unsafe-inline'; " +
             "frame-src 'self' https://www.google.com https://www.recaptcha.net;");
+
+        context.Response.Headers.Append("X-Frame-Options", "DENY");
+        context.Response.Headers.Append("X-Content-Type-Options", "nosniff");
+        context.Response.Headers.Append("Referrer-Policy", "no-referrer");
+
         await next();
     });
-
 
     app.UseHsts();
 }
@@ -139,19 +159,27 @@ app.UseStaticFiles();
 
 app.UseRouting();
 
-//  FIX: Ensure `UseSession()` is placed BEFORE `UseAuthentication()`
+// Ensure `UseSession()` is placed BEFORE `UseAuthentication()`
 app.UseSession();
 app.UseAuthentication();
+
+// Secure Session Management (Prevents Session Hijacking)
 app.Use(async (context, next) =>
 {
     var userManager = context.RequestServices.GetRequiredService<UserManager<ApplicationUser>>();
     var signInManager = context.RequestServices.GetRequiredService<SignInManager<ApplicationUser>>();
 
-    // Skip session validation for email confirmation requests
+    // Skip session validation for email confirmation
     if (context.Request.Path.StartsWithSegments("/ConfirmEmail"))
     {
         await next();
         return;
+    }
+
+    if (!context.User.Identity.IsAuthenticated)
+    {
+        await next();
+        return; // Skip session validation if user is not logged in
     }
 
     var user = await userManager.GetUserAsync(context.User);
@@ -162,17 +190,20 @@ app.Use(async (context, next) =>
 
         if (sessionToken == null || storedSecurityStamp != sessionToken)
         {
-            // Invalidate session and force logout
-            await signInManager.SignOutAsync();
-            context.Session.Clear();
-            context.Response.Redirect("/Login?Message=SessionExpired");
-            return;
+            // Prevent infinite logout loop
+            if (!context.Request.Path.StartsWithSegments("/Login"))
+            {
+                await signInManager.SignOutAsync();
+                context.Session.Clear();
+                context.Response.Redirect("/Login?Message=SessionExpired");
+                return;
+            }
         }
     }
 
     await next();
 });
-app.UseAuthorization();
 
+app.UseAuthorization();
 app.MapRazorPages();
 app.Run();
